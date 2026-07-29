@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Appartement Maastrichtersteenweg — 3D plattegrond</title>
+  <style>
+    :root { --bg:#0f1216; --panel:rgba(17,21,29,.80); --line:rgba(255,255,255,.13); --txt:#eef2f6; --muted:#9db0c0; --accent:#c79a3f; --accent-txt:#171307; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    html,body { height:100%; overflow:hidden; background:var(--bg); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; color:var(--txt); }
+    #app { position:fixed; inset:0; }
+    canvas { display:block; }
+
+    .topbar { position:fixed; top:14px; left:14px; right:14px; display:flex; gap:12px; align-items:flex-start; justify-content:space-between; pointer-events:none; z-index:10; }
+    .title { pointer-events:none; }
+    .title h1 { font-size:15px; font-weight:700; letter-spacing:.2px; }
+    .title p { font-size:11px; color:var(--muted); margin-top:3px; text-transform:uppercase; letter-spacing:1.4px; font-variant-numeric:tabular-nums; }
+
+    .controls { display:flex; gap:8px; flex-wrap:wrap; pointer-events:auto; }
+    button { pointer-events:auto; background:var(--panel); color:var(--txt); border:1px solid var(--line); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); padding:9px 14px; border-radius:11px; font-size:13px; font-weight:600; cursor:pointer; transition:.15s; white-space:nowrap; }
+    button:hover { border-color:rgba(255,255,255,.3); }
+    button.active { background:var(--accent); border-color:var(--accent); color:var(--accent-txt); }
+
+    .legend { position:fixed; bottom:14px; left:14px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); z-index:10; font-size:11.5px; max-width:230px; }
+    .legend b { font-size:12px; }
+    .legend .row { display:flex; align-items:center; gap:8px; margin-top:6px; color:var(--muted); }
+    .legend .sw { width:14px; height:14px; border-radius:3px; flex:0 0 auto; }
+
+    #hint { position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:20; background:rgba(8,10,13,.45); backdrop-filter:blur(2px); pointer-events:none; }
+    #hint.show { display:flex; }
+    #hint .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:26px 30px; text-align:center; max-width:340px; }
+    #hint .card h2 { font-size:17px; margin-bottom:10px; }
+    #hint .card p { font-size:13px; color:var(--muted); line-height:1.6; }
+    #hint .card .k { display:inline-block; background:#2a3038; border:1px solid var(--line); border-radius:6px; padding:1px 7px; margin:0 1px; font-weight:700; color:#fff; }
+    #hint .card .go { margin-top:16px; font-size:13px; color:var(--accent); font-weight:700; }
+    #dpad { position:fixed; bottom:20px; right:20px; display:none; flex-direction:column; align-items:center; gap:6px; z-index:15; user-select:none; -webkit-user-select:none; touch-action:none; }
+    #dpad.show { display:flex; }
+    #dpad .mid { display:flex; gap:6px; }
+    #dpad button { width:52px; height:52px; font-size:18px; padding:0; border-radius:12px; background:var(--panel); color:var(--txt); display:flex; align-items:center; justify-content:center; }
+    #dpad button:active { background:var(--accent); border-color:var(--accent); }
+
+    @media (max-width:600px){ .legend{ display:none; } .title h1{ font-size:13px; } .controls button{ padding:8px 11px; font-size:12px; } #dpad button{ width:48px; height:48px; } }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div class="topbar">
+    <div class="title">
+      <h1>Appartement · Maastrichtersteenweg</h1>
+      <p>1e verdieping links — 9,15 × 10,80 m · schaal 1/100</p>
+    </div>
+    <div class="controls">
+      <button id="btnOrbit" class="active">🔄 Overzicht</button>
+      <button id="btnWalk">🚶 Rondlopen</button>
+      <button id="btnRoof">Plafond: uit</button>
+    </div>
+  </div>
+
+  <div class="legend">
+    <b>Vloertypes</b>
+    <div class="row"><span class="sw" style="background:#b9c7b0"></span> tapis plain (living, eet, hal)</div>
+    <div class="row"><span class="sw" style="background:#b99e86"></span> floorflex (slaapkamers)</div>
+    <div class="row"><span class="sw" style="background:#dfe4e8"></span> tegels (keuken, traphal)</div>
+    <div class="row"><span class="sw" style="background:#d6e6ee"></span> tegels (badkamer)</div>
+  </div>
+
+  <div id="hint">
+    <div class="card">
+      <h2>🚶 Rondloop-modus</h2>
+      <p><b>Sleep</b> (muis of vinger) om rond te kijken.<br>Bewegen met <span class="k">W</span><span class="k">A</span><span class="k">S</span><span class="k">D</span> / <span class="k">pijltjes</span> of de knoppen. <span class="k">Shift</span> = sneller.</p>
+      <p class="go">Sleep om te beginnen →</p>
+    </div>
+  </div>
+
+  <div id="dpad">
+    <button data-key="KeyW" class="up">▲</button>
+    <div class="mid">
+      <button data-key="KeyA">◀</button>
+      <button data-key="KeyS">▼</button>
+      <button data-key="KeyD">▶</button>
+    </div>
+  </div>
+
+  <script src="./vendor/three.min.js"></script>
+  <script src="./vendor/OrbitControls.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
