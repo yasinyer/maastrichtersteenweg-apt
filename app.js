@@ -19,7 +19,7 @@
 
   const CENTER = new THREE.Vector3(W / 2, 0, D / 2);
   const orbitCam = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 200);
-  orbitCam.position.set(W / 2 + 9, 12, D / 2 + 13);
+  orbitCam.position.set(W / 2 + 9, 12.5, -8);   // ZO-hoek: leest als de plattegrond
   const fpCam = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.02, 200);
   fpCam.position.set(W / 2, 1.65, 2.0);
 
@@ -207,5 +207,6 @@
     renderer.setSize(innerWidth, innerHeight);
   });
   setMode('orbit'); setRoof(false);
-  window.__APT = { scene, setMode };
+  window.__APT = { scene, setMode, cam: orbitCam, orbit, renderer,
+    view(p) { orbitCam.position.set(p[0], p[1], p[2]); orbit.target.copy(CENTER); orbit.update(); renderer.render(scene, orbitCam); } };
 })();

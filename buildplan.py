@@ -17,9 +17,10 @@ for g in p.get_drawings():
 words = p.get_text('words')
 
 # ---- kalibratie naar meters ----
-WEST, SOUTH = 508.4, 613.3
-S = 9.156 / (860.9 - 508.4)   # breedte = 9,156 m
-def MX(px): return round((px - WEST) * S, 3)
+WEST, EAST, SOUTH = 508.4, 860.9, 613.3
+S = 9.156 / (EAST - WEST)   # breedte = 9,156 m
+# X gespiegeld (EAST->0) zodat de 3D-dollhouse net als de plattegrond leest
+def MX(px): return round((EAST - px) * S, 3)
 def MZ(py): return round((SOUTH - py) * S, 3)
 
 # ---- muren (H/V) ----
@@ -57,7 +58,8 @@ def build_walls():
             ops.append((kind, ocen, olen))
         # naar meters
         if axis == 'x':      # horizontale muur op vaste y(z), loopt in x
-            seg = {'ax':'x','z':MZ(fixed),'a':MX(a),'b':MX(b),'op':[]}
+            ma, mb = MX(a), MX(b)
+            seg = {'ax':'x','z':MZ(fixed),'a':min(ma,mb),'b':max(ma,mb),'op':[]}
             for kind,c,l in ops:
                 seg['op'].append({'k':kind,'at':MX(c),'w':abs(l*S)})
         else:                # verticale muur op vaste x, loopt in z(y)
