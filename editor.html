@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Verbouw-editor · Appartement Maastrichtersteenweg</title>
+<style>
+  :root { --bg:#0f1216; --panel:#171b23; --line:rgba(255,255,255,.13); --txt:#eef2f6; --muted:#9db0c0; --accent:#c79a3f; --accent-txt:#171307; }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; background:var(--bg); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; color:var(--txt); overflow:hidden; }
+  #wrap { position:fixed; inset:0; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:14px; font-weight:700; margin-right:auto; }
+  header h1 span { color:var(--muted); font-weight:400; font-size:12px; }
+  .seg { display:flex; background:#0c0f14; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .seg button { background:transparent; color:var(--muted); border:0; padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; }
+  .seg button.on { background:var(--accent); color:var(--accent-txt); }
+  .btn { background:var(--panel); color:var(--txt); border:1px solid var(--line); padding:8px 12px; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer; }
+  .btn:hover { border-color:rgba(255,255,255,.3); }
+  .btn.warn { color:#e88; }
+  main { flex:1; position:relative; overflow:hidden; }
+  #stage2d { position:absolute; inset:0; display:flex; }
+  #canvasWrap { flex:1; position:relative; overflow:hidden; background:#0b0e12; }
+  canvas { display:block; touch-action:none; }
+  #app3d { position:absolute; inset:0; display:none; }
+  #app3d.on { display:block; }
+  #stage2d.off { display:none; }
+
+  #side { width:270px; border-left:1px solid var(--line); background:var(--panel); padding:16px; overflow-y:auto; }
+  #side h2 { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:10px; }
+  #side .empty { color:var(--muted); font-size:13px; line-height:1.6; }
+  .field { margin-bottom:14px; }
+  .field label { display:block; font-size:11px; color:var(--muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:.5px; }
+  .field input { width:100%; background:#0c0f14; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:8px 10px; font-size:14px; }
+  .dims { display:flex; gap:8px; }
+  .dims input { text-align:center; font-variant-numeric:tabular-nums; }
+  .types { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .types button { display:flex; align-items:center; gap:7px; background:#0c0f14; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:7px 8px; font-size:12px; cursor:pointer; text-align:left; }
+  .types button.on { border-color:var(--accent); }
+  .types .sw { width:13px; height:13px; border-radius:3px; flex:0 0 auto; }
+  #hint3d { position:absolute; left:14px; bottom:14px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:9px 13px; font-size:12px; color:var(--muted); z-index:5; }
+  .tip { position:absolute; left:12px; top:12px; background:rgba(20,24,30,.85); border:1px solid var(--line); border-radius:9px; padding:8px 12px; font-size:12px; color:var(--muted); z-index:4; pointer-events:none; }
+  @media (max-width:760px){ #side{ position:absolute; right:0; top:0; bottom:0; width:230px; transform:translateX(100%); transition:.2s; z-index:8; } #side.show{ transform:none; } header h1 span{ display:none; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>🏗️ Verbouw-editor <span>· Maastrichtersteenweg</span></h1>
+    <div class="seg"><button id="tab2d" class="on">2D bewerken</button><button id="tab3d">3D bekijken</button></div>
+    <button class="btn" id="addBtn">+ Ruimte</button>
+    <button class="btn" id="saveBtn">Opslaan</button>
+    <button class="btn warn" id="resetBtn">Reset</button>
+  </header>
+  <main>
+    <div id="stage2d">
+      <div id="canvasWrap">
+        <div class="tip">Sleep een ruimte om te verplaatsen · sleep de <b>hoekjes</b> om te vergroten/verkleinen · klik om te selecteren</div>
+        <canvas id="cv"></canvas>
+      </div>
+      <div id="side"><div class="empty">Selecteer een ruimte (klik erop) om de <b>naam</b>, <b>functie</b> en <b>afmetingen</b> aan te passen.<br><br>Of voeg een nieuwe ruimte toe met <b>+ Ruimte</b>.</div></div>
+    </div>
+    <div id="app3d"><div id="hint3d">Sleep = draaien · scroll/knijp = zoomen</div></div>
+  </main>
+</div>
+
+<script src="./vendor/three.min.js"></script>
+<script src="./vendor/OrbitControls.js"></script>
+<script src="./editor.js"></script>
+</body>
+</html>
