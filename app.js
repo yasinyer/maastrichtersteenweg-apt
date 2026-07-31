@@ -1,133 +1,97 @@
 /* =======================================================================
    Appartement Maastrichtersteenweg — 1e verdieping links
-   Interactieve 3D-reconstructie van de plattegrond (schaal 1/100).
-   Indeling gecontroleerd tegen de handmatig overgetekende plattegrond.
-
-   Coördinaten in meters. Plan: X = west→oost, Z = zuid→noord, Y = hoogte.
-   Buitenmaat 9.15 (X) x 10.80 (Z). Verdiepingshoogte 2.60 m.
+   3D-render, 1-op-1 gebouwd uit de Illustrator-plattegrond (apt.pdf).
+   Geometrie komt uit PLAN (plandata.js): muren, deuren, ramen, kasten.
+   Coördinaten in meters. X = west→oost, Z = zuid→noord, Y = hoogte.
    ======================================================================= */
-
 (function () {
   'use strict';
+  const W = PLAN.W, D = PLAN.D, H = 2.60;
 
-  const W = 9.15, D = 10.80, H = 2.60, T = 0.20, Ti = 0.10;
-
-  // X-rasterlijnen (west -> oost)
-  const X0 = 0.0;
-  const X_KEUK = 2.10;    // keuken oost
-  const X_SLK1E = 4.94;   // slaapkamer1 oost
-  const X_EET = 3.60;     // eetkamer/badk/hal west-blok oost
-  const X_BAD = 5.35;     // badk oost = nachthal west
-  const X_NACHT = 6.35;   // nachthal oost = slaapkamer2 west = traphal west
-  const X_SLK2E = 8.71;   // slaapkamer2 oost = oostgevel
-  const X_LIVE = 8.71;    // living/salon loopt door tot de oostgevel
-  const X_TRAPE = 8.71;   // traphal oost = oostgevel
-  const XW = 8.71;
-
-  // Z-rasterlijnen (zuid -> noord)
-  const Z0 = 0.0;
-  const Z_NIS = 1.30;     // noordrand terras-nis
-  const Z_LIV = 4.35;     // living noord / hal-eetkamer zuid
-  const Z_HAL = 5.40;     // hal noord / badk zuid
-  const Z_MID = 7.60;     // eetkamer/badk noord = slaapkamers zuid
-  const Z_NTOP = 8.05;    // nachthal noord (steekt tussen slaapkamers)
-  const ZD = 10.80;
-  const TR_W = 3.30;      // terras-nis breedte
-
-  // ---- Three.js basis ----------------------------------------------------
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xafc7dd);
   const container = document.getElementById('app');
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
   const CENTER = new THREE.Vector3(W / 2, 0, D / 2);
   const orbitCam = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 200);
-  orbitCam.position.set(W / 2 + 9, 11, D / 2 + 12);
+  orbitCam.position.set(W / 2 + 9, 12, D / 2 + 13);
   const fpCam = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.02, 200);
   fpCam.position.set(W / 2, 1.65, 2.0);
 
-  // ---- Licht -------------------------------------------------------------
   scene.add(new THREE.HemisphereLight(0xffffff, 0x808080, 0.85));
   const sun = new THREE.DirectionalLight(0xfff2e0, 1.15);
-  sun.position.set(-8, 16, 6); sun.castShadow = true;
+  sun.position.set(-8, 17, 6); sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  const s = 15;
-  sun.shadow.camera.left = -s; sun.shadow.camera.right = s;
-  sun.shadow.camera.top = s; sun.shadow.camera.bottom = -s;
+  const s = 16;
+  sun.shadow.camera.left = -s; sun.shadow.camera.right = s; sun.shadow.camera.top = s; sun.shadow.camera.bottom = -s;
   sun.shadow.camera.near = 1; sun.shadow.camera.far = 60; sun.shadow.bias = -0.0004;
   sun.target.position.copy(CENTER); scene.add(sun); scene.add(sun.target);
   scene.add(new THREE.AmbientLight(0xffffff, 0.25));
 
-  // ---- Materialen --------------------------------------------------------
   const M = {
-    wall:      new THREE.MeshStandardMaterial({ color: 0xf3efe7, roughness: 0.95 }),
-    wallOut:   new THREE.MeshStandardMaterial({ color: 0xe6ddcd, roughness: 1.0 }),
-    tapis:     new THREE.MeshStandardMaterial({ color: 0xb9c7b0, roughness: 1.0 }),
-    tapisWarm: new THREE.MeshStandardMaterial({ color: 0xc9b79c, roughness: 1.0 }),
-    tegels:    new THREE.MeshStandardMaterial({ color: 0xdfe4e8, roughness: 0.4 }),
-    tegelsBad: new THREE.MeshStandardMaterial({ color: 0xd6e6ee, roughness: 0.35 }),
-    floorflex: new THREE.MeshStandardMaterial({ color: 0xb99e86, roughness: 0.85 }),
-    terras:    new THREE.MeshStandardMaterial({ color: 0x9a9a95, roughness: 1.0 }),
-    glass:     new THREE.MeshStandardMaterial({ color: 0xaad4e5, roughness: 0.05, transparent: true, opacity: 0.32 }),
-    frame:     new THREE.MeshStandardMaterial({ color: 0x8a8f94, roughness: 0.6, metalness: 0.3 }),
-    wood:      new THREE.MeshStandardMaterial({ color: 0x9c6b41, roughness: 0.7 }),
-    woodDark:  new THREE.MeshStandardMaterial({ color: 0x5f4023, roughness: 0.7 }),
-    fabric:    new THREE.MeshStandardMaterial({ color: 0x5b6b7a, roughness: 0.95 }),
-    fabric2:   new THREE.MeshStandardMaterial({ color: 0x7d8a74, roughness: 0.95 }),
-    white:     new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.5 }),
-    metal:     new THREE.MeshStandardMaterial({ color: 0xbfc4c9, roughness: 0.3, metalness: 0.6 }),
-    steel:     new THREE.MeshStandardMaterial({ color: 0xcfd4d9, roughness: 0.25, metalness: 0.8 }),
-    dark:      new THREE.MeshStandardMaterial({ color: 0x22262b, roughness: 0.5 }),
-    accent:    new THREE.MeshStandardMaterial({ color: 0xc46b52, roughness: 0.8 }),
-    green:     new THREE.MeshStandardMaterial({ color: 0x4a7a4a, roughness: 0.9 }),
-    ceiling:   new THREE.MeshStandardMaterial({ color: 0xfbfaf7, roughness: 1.0, side: THREE.DoubleSide }),
+    wall:     new THREE.MeshStandardMaterial({ color: 0xf3efe7, roughness: 0.95 }),
+    wallOut:  new THREE.MeshStandardMaterial({ color: 0xe6ddcd, roughness: 1.0 }),
+    tapis:    new THREE.MeshStandardMaterial({ color: 0xb9c7b0, roughness: 1.0 }),
+    warm:     new THREE.MeshStandardMaterial({ color: 0xc9b79c, roughness: 1.0 }),
+    tegels:   new THREE.MeshStandardMaterial({ color: 0xdfe4e8, roughness: 0.4 }),
+    bad:      new THREE.MeshStandardMaterial({ color: 0xd6e6ee, roughness: 0.35 }),
+    flex:     new THREE.MeshStandardMaterial({ color: 0xb99e86, roughness: 0.85 }),
+    terras:   new THREE.MeshStandardMaterial({ color: 0x9a9a95, roughness: 1.0 }),
+    glass:    new THREE.MeshStandardMaterial({ color: 0xaad4e5, roughness: 0.05, transparent: true, opacity: 0.32 }),
+    frame:    new THREE.MeshStandardMaterial({ color: 0x8a8f94, roughness: 0.6, metalness: 0.3 }),
+    wood:     new THREE.MeshStandardMaterial({ color: 0x9c6b41, roughness: 0.7 }),
+    woodDark: new THREE.MeshStandardMaterial({ color: 0x5f4023, roughness: 0.7 }),
+    ceiling:  new THREE.MeshStandardMaterial({ color: 0xfbfaf7, roughness: 1.0, side: THREE.DoubleSide }),
   };
 
-  const shell = new THREE.Group(), furniture = new THREE.Group(), labelGroup = new THREE.Group();
-  scene.add(shell); scene.add(furniture); scene.add(labelGroup);
+  const shell = new THREE.Group(), extra = new THREE.Group(), labelGroup = new THREE.Group();
+  scene.add(shell); scene.add(extra); scene.add(labelGroup);
 
-  function box(w, h, d, mat, x, y, z, opts) {
+  function box(w, h, d, mat, x, y, z, noCast) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    m.position.set(x, y, z);
-    m.castShadow = !(opts && opts.noCast); m.receiveShadow = true;
-    return m;
+    m.position.set(x, y, z); m.castShadow = !noCast; m.receiveShadow = true; return m;
   }
-  function floor(x1, z1, x2, z2, mat, y) {
+  function floorRect(x1, z1, x2, z2, mat, y) {
     const w = Math.abs(x2 - x1), d = Math.abs(z2 - z1);
-    const m = box(w, 0.04, d, mat, (x1 + x2) / 2, (y || 0) + 0.02, (z1 + z2) / 2, { noCast: true });
-    shell.add(m); return m;
+    shell.add(box(w, 0.04, d, mat, (x1 + x2) / 2, (y || 0) + 0.02, (z1 + z2) / 2, true));
   }
-  function ceil(x1, z1, x2, z2) {
+  function ceilRect(x1, z1, x2, z2) {
     const g = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(x2 - x1), Math.abs(z2 - z1)), M.ceiling);
-    g.rotation.x = Math.PI / 2; g.position.set((x1 + x2) / 2, H, (z1 + z2) / 2);
-    g.receiveShadow = true; shell.add(g);
+    g.rotation.x = Math.PI / 2; g.position.set((x1 + x2) / 2, H, (z1 + z2) / 2); g.receiveShadow = true;
+    g.userData.ceiling = true; shell.add(g);
   }
-  function addWallBox(axis, fixed, a, b, y0, y1, thick, mat) {
+
+  // ---- vloeren + plafonds ----
+  PLAN.floors.forEach(f => { floorRect(f.x1, f.z1, f.x2, f.z2, M[f.mat] || M.tapis); ceilRect(f.x1, f.z1, f.x2, f.z2); });
+
+  // ---- muren met openingen ----
+  function segBox(ax, fixed, a, b, y0, y1, thick, mat) {
     const len = b - a, h = y1 - y0;
-    if (h <= 0.001 || len <= 0.001) return;
-    shell.add(axis === 'x'
-      ? box(len, h, thick, mat, (a + b) / 2, y0 + h / 2, fixed)
-      : box(thick, h, len, mat, fixed, y0 + h / 2, (a + b) / 2));
+    if (len <= 0.001 || h <= 0.001) return;
+    shell.add(ax === 'x' ? box(len, h, thick, mat, (a + b) / 2, y0 + h / 2, fixed, true)
+                         : box(thick, h, len, mat, fixed, y0 + h / 2, (a + b) / 2, true));
   }
-  function addGlass(axis, fixed, at, width, y0, y1) {
+  function glass(ax, fixed, at, w, y0, y1, thick) {
     const h = y1 - y0;
-    shell.add(axis === 'x'
-      ? box(width, h, 0.03, M.glass, at, y0 + h / 2, fixed, { noCast: true })
-      : box(0.03, h, width, M.glass, fixed, y0 + h / 2, at, { noCast: true }));
-    shell.add(axis === 'x'
-      ? box(width + 0.06, h + 0.06, 0.05, M.frame, at, y0 + h / 2, fixed, { noCast: true })
-      : box(0.05, h + 0.06, width + 0.06, M.frame, fixed, y0 + h / 2, at, { noCast: true }));
+    shell.add(ax === 'x' ? box(w, h, 0.03, M.glass, at, y0 + h / 2, fixed, true)
+                         : box(0.03, h, w, M.glass, fixed, y0 + h / 2, at, true));
+    shell.add(ax === 'x' ? box(w + 0.05, h + 0.05, 0.05, M.frame, at, y0 + h / 2, fixed, true)
+                         : box(0.05, h + 0.05, w + 0.05, M.frame, fixed, y0 + h / 2, at, true));
   }
-  function wall(axis, fixed, start, end, thick, mat, openings) {
-    openings = (openings || []).slice().sort((a, b) => a.at - b.at);
-    let pieces = [[Math.min(start, end), Math.max(start, end)]];
-    openings.forEach(o => {
-      const a = o.at - o.width / 2, b = o.at + o.width / 2, np = [];
+  const DH = 2.10, WY0 = 0.95, WY1 = 2.25;
+  PLAN.walls.forEach(wl => {
+    const ax = wl.ax, fixed = (ax === 'x') ? wl.z : wl.x;
+    const thick = wl.ext ? 0.18 : 0.10, mat = wl.ext ? M.wallOut : M.wall;
+    const ops = (wl.op || []).map(o => ({ k: o.k, at: o.at, w: o.w, y0: o.k === 'window' ? WY0 : 0, y1: o.k === 'window' ? WY1 : DH }))
+      .sort((p, q) => p.at - q.at);
+    let pieces = [[wl.a, wl.b]];
+    ops.forEach(o => {
+      const a = o.at - o.w / 2, b = o.at + o.w / 2, np = [];
       pieces.forEach(([p0, p1]) => {
         if (b <= p0 || a >= p1) { np.push([p0, p1]); return; }
         if (a > p0) np.push([p0, a]);
@@ -135,176 +99,57 @@
       });
       pieces = np;
     });
-    pieces.forEach(([p0, p1]) => addWallBox(axis, fixed, p0, p1, 0, H, thick, mat));
-    openings.forEach(o => {
-      if (o.y1 < H - 0.001) addWallBox(axis, fixed, o.at - o.width / 2, o.at + o.width / 2, o.y1, H, thick, mat);
-      if (o.y0 > 0.001) addWallBox(axis, fixed, o.at - o.width / 2, o.at + o.width / 2, 0, o.y0, thick, mat);
-      if (o.glass) addGlass(axis, fixed, o.at, o.width, o.y0, o.y1);
+    pieces.forEach(([p0, p1]) => segBox(ax, fixed, p0, p1, 0, H, thick, mat));
+    ops.forEach(o => {
+      if (o.y1 < H - 0.001) segBox(ax, fixed, o.at - o.w / 2, o.at + o.w / 2, o.y1, H, thick, mat); // latei
+      if (o.y0 > 0.001) segBox(ax, fixed, o.at - o.w / 2, o.at + o.w / 2, 0, o.y0, thick, mat);      // borstwering
+      if (o.k === 'window') glass(ax, fixed, o.at, o.w, o.y0, o.y1, thick);
     });
-  }
+  });
 
-  // =======================================================================
-  //  VLOEREN
-  // =======================================================================
-  floor(TR_W, Z0, X_LIVE, Z_LIV, M.tapis);          // salon (zuid, volle breedte)
-  floor(X0, Z_NIS, TR_W, Z_LIV, M.tapis);           // living-west (naast nis)
-  floor(X0, Z_LIV, X_EET, Z_MID, M.tapis);          // eetkamer
-  floor(X0, Z_MID, X_KEUK, ZD, M.tegels);           // keuken
-  floor(X_KEUK, Z_MID, X_SLK1E, ZD, M.floorflex);   // slaapkamer1
-  floor(X_SLK1E, Z_NTOP, X_NACHT, ZD, M.tapisWarm); // kasten K,K
-  floor(X_NACHT, Z_MID, X_SLK2E, ZD, M.floorflex);  // slaapkamer2
-  floor(X_EET, Z_HAL, X_BAD, Z_MID, M.tegelsBad);   // badkamer
-  floor(X_EET, Z_LIV, X_NACHT, Z_HAL, M.tapisWarm); // hal (voet)
-  floor(X_BAD, Z_HAL, X_NACHT, Z_NTOP, M.tapisWarm);// nachthal (rechthoek omhoog)
-  floor(X_NACHT, Z_LIV, X_TRAPE, Z_MID, M.tegels);  // traphal (gemeensch.)
+  // ---- inbouwkasten (vaste kasten) ----
+  PLAN.inbouwkast.forEach(k => {
+    const w = Math.abs(k.x2 - k.x1), d = Math.abs(k.z2 - k.z1);
+    extra.add(box(w - 0.04, 2.25, d - 0.06, M.wood, (k.x1 + k.x2) / 2, 1.125, (k.z1 + k.z2) / 2, false));
+    extra.add(box(w - 0.02, 0.02, d - 0.04, M.woodDark, (k.x1 + k.x2) / 2, 2.25, (k.z1 + k.z2) / 2, true));
+  });
 
-  // Plafonds
-  ceil(X0, Z_NIS, X_LIVE, Z_MID);
-  ceil(X0, Z_MID, X_SLK2E, ZD);
-  ceil(X_NACHT, Z_LIV, XW, Z_MID);
-
-  // =======================================================================
-  //  MUREN
-  // =======================================================================
-  const DH = 2.10;
-
-  // ---- Buitenmuren met ramen ----
-  // Noord (keuken + slaapkamers)
-  wall('x', ZD, X0, X_SLK2E, T, M.wallOut, [
-    { at: 1.05, width: 1.1, y0: 1.0, y1: 2.2, glass: true },   // keuken
-    { at: 3.5, width: 1.7, y0: 0.95, y1: 2.25, glass: true },  // slaapkamer1
-    { at: 7.5, width: 1.7, y0: 0.95, y1: 2.25, glass: true },  // slaapkamer2
-  ]);
-  // West (keuken/eetkamer/living)
-  wall('z', X0, Z_NIS, ZD, T, M.wallOut, [
-    { at: 2.9, width: 1.8, y0: 0.95, y1: 2.25, glass: true },  // living west
-    { at: 5.9, width: 1.6, y0: 0.95, y1: 2.25, glass: true },  // eetkamer west
-    { at: 9.4, width: 1.1, y0: 1.0, y1: 2.2, glass: true },    // keuken west
-  ]);
-  // Zuid salon (met terras-nis links open)
-  wall('x', Z0, TR_W, X_LIVE, T, M.wallOut, [
-    { at: 5.0, width: 2.4, y0: 0.0, y1: 2.25, glass: true },   // salon schuifraam -> terras? (zuid)
-    { at: 7.2, width: 1.2, y0: 0.95, y1: 2.25, glass: true },
-  ]);
-  // Nis: noordwand van de nis (living springt in) + westwand nis
-  wall('x', Z_NIS, X0, TR_W, T, M.wallOut, [
-    { at: 1.7, width: 2.2, y0: 0.0, y1: 2.25, glass: true },   // schuifraam living -> terras (in nis)
-  ]);
-  // Oost living/salon
-  wall('z', X_LIVE, Z0, Z_LIV, T, M.wallOut, []);
-  // Oost slaapkamer2
-  wall('z', X_SLK2E, Z_MID, ZD, T, M.wallOut, [
-    { at: 9.3, width: 1.4, y0: 0.95, y1: 2.25, glass: true },
-  ]);
-  // Oost traphal/lift-zone (gemeensch. buitenrand)
-  wall('z', XW, Z_HAL, Z_MID, T, M.wallOut, []);
-  wall('x', Z_LIV, X_NACHT, X_TRAPE, T, M.wall, []);  // traphal zuidwand
-  wall('z', X_TRAPE, Z_LIV, Z_HAL, T, M.wall, []);
-
-  // ---- Binnenmuren ----
-  // Keuken | slaapkamer1
-  wall('z', X_KEUK, Z_MID, ZD, Ti, M.wall, [{ at: 8.4, width: 0.85, y0: 0, y1: DH }]);
-  // Keuken | eetkamer (zuid van keuken)
-  wall('x', Z_MID, X0, X_KEUK, Ti, M.wall, [{ at: 1.05, width: 0.9, y0: 0, y1: DH }]);
-  // Slaapkamer1 zuid (| eetkamer/hal)
-  wall('x', Z_MID, X_KEUK, X_SLK1E, Ti, M.wall, [{ at: 3.5, width: 0.9, y0: 0, y1: DH }]);
-  // Eetkamer oost (| badk/hal) — grotendeels open naar living, deur naar hal
-  wall('z', X_EET, Z_LIV, Z_MID, Ti, M.wall, [{ at: 5.0, width: 1.1, y0: 0, y1: DH }]);
-  // Badk noord (| kasten/slaapkamer1) en badk oost (| nachthal)
-  wall('x', Z_MID, X_EET, X_BAD, Ti, M.wall, []);
-  wall('z', X_BAD, Z_HAL, Z_MID, Ti, M.wall, [{ at: 6.6, width: 0.75, y0: 0, y1: DH }]);
-  // Badk zuid (| hal)
-  wall('x', Z_HAL, X_EET, X_BAD, Ti, M.wall, [{ at: 4.5, width: 0.8, y0: 0, y1: DH }]);
-  // Nachthal oost (| traphal) — met voordeur
-  wall('z', X_NACHT, Z_LIV, Z_MID, Ti, M.wall, [{ at: 6.6, width: 0.95, y0: 0, y1: DH }]);
-  // Nachthal-top zijwanden (tussen slaapkamers)
-  wall('z', X_BAD, Z_MID, Z_NTOP, Ti, M.wall, []);
-  wall('z', X_NACHT, Z_MID, Z_NTOP, Ti, M.wall, []);
-  wall('x', Z_NTOP, X_BAD, X_NACHT, Ti, M.wall, [{ at: 5.85, width: 0.7, y0: 0, y1: DH }]); // toegang slaapkamers
-  // Kasten zuidwand
-  wall('x', Z_NTOP, X_SLK1E, X_BAD, Ti, M.wall, []);
-  // Slaapkamer1 oost (| kasten) en slaapkamer2 west (| nachthal/kasten)
-  wall('z', X_SLK1E, Z_NTOP, ZD, Ti, M.wall, [{ at: 9.4, width: 0.7, y0: 0, y1: DH }]);
-  wall('z', X_NACHT, Z_NTOP, ZD, Ti, M.wall, [{ at: 9.4, width: 0.7, y0: 0, y1: DH }]);
-  // Slaapkamer2 zuid (| traphal)
-  wall('x', Z_MID, X_NACHT, X_SLK2E, Ti, M.wall, []);
-  // Hal/eetkamer zuid -> living (open doorgang) : z=Z_LIV
-  wall('x', Z_LIV, X_EET, X_NACHT, Ti, M.wall, [{ at: 4.6, width: 1.2, y0: 0, y1: DH }]);
-  // Living oost boven de nis-scheiding niet nodig
-
-  // =======================================================================
-  //  TERRASSEN
-  // =======================================================================
-  function terras(x1, z1, x2, z2, southOpen) {
-    shell.add(box(x2 - x1, 0.12, z2 - z1, M.terras, (x1 + x2) / 2, -0.06, (z1 + z2) / 2, { noCast: true }));
-    const railH = 1.0, r = 0.04;
-    function rail(ax, fx, a, b) {
-      shell.add(ax === 'x' ? box(b - a, r, r, M.frame, (a + b) / 2, railH, fx, { noCast: true })
-                           : box(r, r, b - a, M.frame, fx, railH, (a + b) / 2, { noCast: true }));
+  // ---- terrassen ----
+  PLAN.terras.forEach(t => {
+    const x1 = Math.min(t.x1, t.x2), x2 = Math.max(t.x1, t.x2), z1 = Math.min(t.z1, t.z2), z2 = Math.max(t.z1, t.z2);
+    shell.add(box(x2 - x1, 0.12, z2 - z1, M.terras, (x1 + x2) / 2, -0.06, (z1 + z2) / 2, true));
+    const rh = 1.0, r = 0.04;
+    for (let x = x1; x <= x2 + 0.01; x += 0.35) shell.add(box(0.02, rh, 0.02, M.frame, x, rh / 2, t.south ? z1 : z2, true));
+    shell.add(box(x2 - x1, r, r, M.frame, (x1 + x2) / 2, rh, t.south ? z1 : z2, true));
+    if (t.south) {
+      for (let z = z1; z <= z2 + 0.01; z += 0.35) { shell.add(box(0.02, rh, 0.02, M.frame, x1, rh / 2, z, true)); shell.add(box(0.02, rh, 0.02, M.frame, x2, rh / 2, z, true)); }
+      shell.add(box(r, r, z2 - z1, M.frame, x1, rh, (z1 + z2) / 2, true));
+      shell.add(box(r, r, z2 - z1, M.frame, x2, rh, (z1 + z2) / 2, true));
     }
-    for (let x = x1; x <= x2 + 0.01; x += 0.35) shell.add(box(0.02, railH, 0.02, M.frame, x, railH / 2, z1, { noCast: true }));
-    rail('x', z1, x1, x2);
-    if (southOpen) {
-      for (let z = z1; z <= z2 + 0.01; z += 0.35) { shell.add(box(0.02, railH, 0.02, M.frame, x1, railH / 2, z, { noCast: true })); shell.add(box(0.02, railH, 0.02, M.frame, x2, railH / 2, z, { noCast: true })); }
-      rail('z', x1, z1, z2); rail('z', x2, z1, z2);
-    }
-  }
-  terras(0.15, Z0, TR_W - 0.1, Z_NIS, true);  // terras onder (in de nis)
-  terras(X0, ZD, X_KEUK, ZD + 1.25, false);   // terras boven (keuken)
+  });
 
-  // =======================================================================
-  //  MEUBILAIR (gestileerd)
-  // =======================================================================
-  function place(g, x, z, r) { g.position.set(x, 0, z); if (r) g.rotation.y = r; furniture.add(g); return g; }
-
-  // Onbemeubeld: alleen de vaste inbouwkasten tussen de slaapkamers blijven.
-  // (living, eetkamer, keuken, slaapkamers, badkamer en traphal zijn leeg)
-  (function () {
-    // inbouwkast 1 (bij slaapkamer 1)
-    furniture.add(box(0.68, 2.25, 2.5, M.wood, 5.29, 1.125, 9.45));
-    furniture.add(box(0.70, 0.02, 2.5, M.woodDark, 5.29, 2.24, 9.45, { noCast: true }));
-    // inbouwkast 2 (bij slaapkamer 2)
-    furniture.add(box(0.68, 2.25, 2.5, M.wood, 6.01, 1.125, 9.45));
-    furniture.add(box(0.70, 0.02, 2.5, M.woodDark, 6.01, 2.24, 9.45, { noCast: true }));
-  })();
-
-  // =======================================================================
-  //  KAMERLABELS
-  // =======================================================================
+  // ---- kamerlabels ----
   function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
-  function label(text, x, z, sub) {
-    const cw = 256, chh = 96, cv = document.createElement('canvas'); cv.width = cw; cv.height = chh;
+  PLAN.labels.forEach(([text, x, z]) => {
+    const cw = 256, ch = 64, cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
     const ctx = cv.getContext('2d');
-    ctx.fillStyle = 'rgba(20,24,28,0.82)'; roundRect(ctx, 4, 24, cw - 8, 52, 12); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 30px Helvetica, Arial';
-    ctx.fillText(text, cw / 2, sub ? 50 : 56);
-    if (sub) { ctx.font = '18px Helvetica, Arial'; ctx.fillStyle = '#b9c7d0'; ctx.fillText(sub, cw / 2, 71); }
+    ctx.fillStyle = 'rgba(20,24,28,0.82)'; roundRect(ctx, 4, 16, cw - 8, 34, 10); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 24px Helvetica, Arial'; ctx.fillText(text, cw / 2, 41);
     const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-    sp.position.set(x, 2.7, z); sp.scale.set(1.6, 0.6, 1); labelGroup.add(sp);
-  }
-  label('Living / Salon', 3.0, 2.2, '39,74 m²');
-  label('Eetkamer', 1.7, 5.9);
-  label('Keuken', 1.0, 9.2);
-  label('Slaapkamer 1', 3.2, 9.2);
-  label('Slaapkamer 2', 7.6, 9.2);
-  label('Inbouwkasten', 5.65, 9.45);
-  label('Badkamer', 4.45, 6.5);
-  label('Hal', 4.9, 4.85);
-  label('Nachthal', 5.85, 6.7);
-  label('Traphal', 7.4, 6.0);
+    sp.position.set(x, 2.7, z); sp.scale.set(1.7, 0.42, 1); labelGroup.add(sp);
+  });
 
   // =======================================================================
   //  CAMERA-MODI + CONTROLS
   // =======================================================================
   const orbit = new THREE.OrbitControls(orbitCam, renderer.domElement);
   orbit.target.copy(CENTER); orbit.enableDamping = true; orbit.dampingFactor = 0.08;
-  orbit.maxPolarAngle = Math.PI / 2.05; orbit.minDistance = 4; orbit.maxDistance = 40; orbit.update();
+  orbit.maxPolarAngle = Math.PI / 2.05; orbit.minDistance = 4; orbit.maxDistance = 46; orbit.update();
 
   const keys = {};
   addEventListener('keydown', e => { keys[e.code] = true; });
   addEventListener('keyup', e => { keys[e.code] = false; });
-
   let mode = 'orbit', roof = true, yaw = 0, pitch = 0;
   const fpPos = new THREE.Vector3(W / 2, 1.65, 2.2);
   const btnOrbit = document.getElementById('btnOrbit'), btnWalk = document.getElementById('btnWalk');
@@ -318,7 +163,7 @@
     else { hint.classList.remove('show'); dpad.classList.remove('show'); }
   }
   function setRoof(on) {
-    roof = on; shell.children.forEach(c => { if (c.material === M.ceiling) c.visible = on; });
+    roof = on; shell.children.forEach(c => { if (c.userData && c.userData.ceiling) c.visible = on; });
     btnRoof.classList.toggle('active', on); btnRoof.textContent = on ? 'Plafond: aan' : 'Plafond: uit';
   }
   function applyFP() {
@@ -346,10 +191,9 @@
     if (!f && !sx) return; const l = Math.hypot(f, sx); f /= l; sx /= l;
     fpPos.x += (Math.sin(yaw) * f + Math.cos(yaw) * sx) * speed;
     fpPos.z += (Math.cos(yaw) * f - Math.sin(yaw) * sx) * speed;
-    fpPos.x = Math.max(0.35, Math.min(XW - 0.35, fpPos.x));
-    fpPos.z = Math.max(-1.2, Math.min(ZD - 0.35, fpPos.z)); fpPos.y = 1.65; applyFP();
+    fpPos.x = Math.max(0.3, Math.min(W - 0.3, fpPos.x));
+    fpPos.z = Math.max(0.3, Math.min(D - 0.3, fpPos.z)); fpPos.y = 1.65; applyFP();
   }
-
   let prev = performance.now();
   (function animate() {
     requestAnimationFrame(animate);
