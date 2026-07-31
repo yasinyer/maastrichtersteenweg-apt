@@ -19,10 +19,10 @@
   const X_EET = 3.60;     // eetkamer/badk/hal west-blok oost
   const X_BAD = 5.35;     // badk oost = nachthal west
   const X_NACHT = 6.35;   // nachthal oost = slaapkamer2 west = traphal west
-  const X_SLK2E = 8.71;   // slaapkamer2 oost
-  const X_LIVE = 8.00;    // living/salon oost
-  const X_TRAPE = 8.60;   // traphal oost
-  const XW = 9.15;
+  const X_SLK2E = 8.71;   // slaapkamer2 oost = oostgevel
+  const X_LIVE = 8.71;    // living/salon loopt door tot de oostgevel
+  const X_TRAPE = 8.71;   // traphal oost = oostgevel
+  const XW = 8.71;
 
   // Z-rasterlijnen (zuid -> noord)
   const Z0 = 0.0;
@@ -157,7 +157,6 @@
   floor(X_EET, Z_LIV, X_NACHT, Z_HAL, M.tapisWarm); // hal (voet)
   floor(X_BAD, Z_HAL, X_NACHT, Z_NTOP, M.tapisWarm);// nachthal (rechthoek omhoog)
   floor(X_NACHT, Z_LIV, X_TRAPE, Z_MID, M.tegels);  // traphal (gemeensch.)
-  floor(X_TRAPE, Z_HAL, XW, Z_MID, M.tegels);       // lift-overloop
 
   // Plafonds
   ceil(X0, Z_NIS, X_LIVE, Z_MID);
