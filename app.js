@@ -258,86 +258,8 @@
   // =======================================================================
   function place(g, x, z, r) { g.position.set(x, 0, z); if (r) g.rotation.y = r; furniture.add(g); return g; }
 
-  // -- Living/Salon (grote ruimte, zuid) --
-  (function () {
-    const g = new THREE.Group(); const seatH = 0.42, backH = 0.75;
-    g.add(box(2.6, seatH, 0.95, M.fabric, 0, seatH / 2, 0));
-    g.add(box(2.6, backH - seatH, 0.2, M.fabric, 0, (backH + seatH) / 2, -0.38));
-    g.add(box(0.95, seatH, 1.7, M.fabric, -1.78, seatH / 2, 0.6));
-    g.add(box(0.2, backH - seatH, 1.7, M.fabric, -2.15, (backH + seatH) / 2, 0.6));
-    g.add(box(0.5, 0.15, 0.5, M.accent, -0.7, seatH + 0.08, 0));
-    g.add(box(0.5, 0.15, 0.5, M.fabric2, 0.7, seatH + 0.08, 0));
-    place(g, 2.4, 1.5, 0);
-    const t = new THREE.Group();
-    t.add(box(1.2, 0.06, 0.65, M.woodDark, 0, 0.4, 0));
-    [[-0.55, -0.27], [0.55, -0.27], [-0.55, 0.27], [0.55, 0.27]].forEach(p => t.add(box(0.06, 0.4, 0.06, M.woodDark, p[0], 0.2, p[1])));
-    place(t, 2.5, 2.7, 0);
-    furniture.add(box(2.9, 0.02, 1.9, M.fabric2, 2.4, 0.05, 2.3, { noCast: true }));
-    const tv = new THREE.Group();
-    tv.add(box(1.9, 0.45, 0.4, M.woodDark, 0, 0.22, 0));
-    tv.add(box(1.7, 0.95, 0.06, M.dark, 0, 1.18, -0.1));
-    place(tv, 4.0, 3.7, Math.PI);
-    const pl = new THREE.Group();
-    pl.add(box(0.3, 0.35, 0.3, M.terras, 0, 0.17, 0));
-    pl.add(box(0.5, 0.75, 0.5, M.green, 0, 0.72, 0));
-    place(pl, 7.4, 0.6, 0);
-  })();
-
-  // -- Eetkamer: tafel + stoelen --
-  (function () {
-    const cx = 1.7, cz = 5.9, t = new THREE.Group();
-    t.add(box(1.6, 0.06, 0.9, M.wood, 0, 0.74, 0));
-    [[-0.7, -0.35], [0.7, -0.35], [-0.7, 0.35], [0.7, 0.35]].forEach(p => t.add(box(0.08, 0.74, 0.08, M.wood, p[0], 0.37, p[1])));
-    place(t, cx, cz, 0);
-    [[-0.55, -0.7, 0], [0.55, -0.7, 0], [-0.55, 0.7, Math.PI], [0.55, 0.7, Math.PI]].forEach(c => {
-      const ch = new THREE.Group();
-      ch.add(box(0.42, 0.04, 0.42, M.woodDark, 0, 0.46, 0));
-      ch.add(box(0.42, 0.5, 0.05, M.woodDark, 0, 0.7, -0.19));
-      [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]].forEach(p => ch.add(box(0.04, 0.46, 0.04, M.woodDark, p[0], 0.23, p[1])));
-      place(ch, cx + c[0], cz + c[1], c[2]);
-    });
-    furniture.add(box(0.35, 0.2, 0.35, M.metal, cx, 1.95, cz, { noCast: true }));
-  })();
-
-  // -- Keuken --
-  (function () {
-    const g = new THREE.Group(), cH = 0.9, cD = 0.6;
-    g.add(box(1.9, cH, cD, M.white, 0, cH / 2, D - 0.3));
-    g.add(box(1.9, 0.05, cD + 0.04, M.steel, 0, cH + 0.02, D - 0.3));
-    g.add(box(0.6, cH, 2.6, M.white, 0.3, cH / 2, D - 1.9));
-    g.add(box(0.64, 0.05, 2.6, M.steel, 0.3, cH + 0.02, D - 1.9));
-    g.add(box(0.6, 0.04, 0.55, M.dark, 0.95, cH + 0.05, D - 0.3, { noCast: true }));
-    g.add(box(0.5, 0.02, 0.4, M.metal, -0.55, cH + 0.05, D - 0.3, { noCast: true }));
-    g.add(box(1.9, 0.6, 0.35, M.white, 0, 1.9, D - 0.18));
-    g.add(box(0.6, 1.8, 0.6, M.steel, 1.55, 0.9, D - 0.4));
-    furniture.add(g);
-  })();
-
-  // -- Slaapkamers --
-  function bedroom(x, z, bedW, dbl) {
-    const g = new THREE.Group(), bl = 2.0;
-    g.add(box(bedW, 0.3, bl, M.woodDark, 0, 0.15, 0));
-    g.add(box(bedW, 0.2, bl - 0.1, M.white, 0, 0.4, 0.05));
-    g.add(box(bedW, 0.6, 0.1, M.woodDark, 0, 0.5, -bl / 2));
-    if (dbl) {
-      g.add(box(0.55, 0.12, 0.35, M.white, -0.35, 0.56, -bl / 2 + 0.35));
-      g.add(box(0.55, 0.12, 0.35, M.white, 0.35, 0.56, -bl / 2 + 0.35));
-      g.add(box(bedW - 0.1, 0.08, 1.0, M.accent, 0, 0.52, 0.3, { noCast: true }));
-    } else {
-      g.add(box(0.5, 0.12, 0.35, M.white, 0, 0.56, -bl / 2 + 0.35));
-      g.add(box(bedW - 0.1, 0.08, 1.0, M.fabric2, 0, 0.52, 0.3, { noCast: true }));
-    }
-    place(g, x, z, Math.PI);
-  }
-  function wardrobe(x, z, r) {
-    const g = new THREE.Group();
-    g.add(box(1.5, 2.1, 0.6, M.wood, 0, 1.05, 0));
-    g.add(box(0.02, 2.0, 0.62, M.woodDark, 0, 1.05, 0, { noCast: true }));
-    place(g, x, z, r);
-  }
-  bedroom(3.4, 8.9, 1.5, true);
-  bedroom(7.5, 9.0, 0.95, false);
-  // Inbouwkasten tussen de slaapkamers (volgens plattegrond) — vaste kasten
+  // Onbemeubeld: alleen de vaste inbouwkasten tussen de slaapkamers blijven.
+  // (living, eetkamer, keuken, slaapkamers, badkamer en traphal zijn leeg)
   (function () {
     // inbouwkast 1 (bij slaapkamer 1)
     furniture.add(box(0.68, 2.25, 2.5, M.wood, 5.29, 1.125, 9.45));
@@ -345,30 +267,6 @@
     // inbouwkast 2 (bij slaapkamer 2)
     furniture.add(box(0.68, 2.25, 2.5, M.wood, 6.01, 1.125, 9.45));
     furniture.add(box(0.70, 0.02, 2.5, M.woodDark, 6.01, 2.24, 9.45, { noCast: true }));
-  })();
-
-  // -- Badkamer --
-  (function () {
-    const bath = new THREE.Group();
-    bath.add(box(1.55, 0.55, 0.72, M.white, 0, 0.28, 0));
-    bath.add(box(1.4, 0.15, 0.58, M.tegelsBad, 0, 0.5, 0, { noCast: true }));
-    place(bath, 4.45, 7.2, 0);
-    const sink = new THREE.Group();
-    sink.add(box(0.6, 0.85, 0.45, M.white, 0, 0.42, 0));
-    sink.add(box(0.55, 0.08, 0.4, M.white, 0, 0.85, 0, { noCast: true }));
-    place(sink, 3.95, 6.4, -Math.PI / 2);
-    const wc = new THREE.Group();
-    wc.add(box(0.38, 0.4, 0.55, M.white, 0, 0.2, 0));
-    wc.add(box(0.38, 0.5, 0.18, M.white, 0, 0.5, -0.2));
-    place(wc, 3.95, 5.75, -Math.PI / 2);
-  })();
-
-  // -- Traphal: trap (gemeenschappelijk) --
-  (function () {
-    const g = new THREE.Group(), steps = 12, rise = H / steps, run = 0.24;
-    for (let i = 0; i < steps; i++) g.add(box(1.6, rise, run, M.tegels, 0, rise * i + rise / 2, i * run));
-    place(g, 7.4, 4.9, 0);
-    furniture.add(box(0.9, H - 0.1, 0.9, M.metal, 8.9, (H - 0.1) / 2, 6.5));
   })();
 
   // =======================================================================
