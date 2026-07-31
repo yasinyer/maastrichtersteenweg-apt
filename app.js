@@ -335,8 +335,17 @@
     g.add(box(0.02, 2.0, 0.62, M.woodDark, 0, 1.05, 0, { noCast: true }));
     place(g, x, z, r);
   }
-  bedroom(3.4, 8.9, 1.5, true); wardrobe(2.9, 10.3, 0);
-  bedroom(7.5, 9.0, 0.95, false); wardrobe(8.2, 10.3, 0);
+  bedroom(3.4, 8.9, 1.5, true);
+  bedroom(7.5, 9.0, 0.95, false);
+  // Inbouwkasten tussen de slaapkamers (volgens plattegrond) — vaste kasten
+  (function () {
+    // inbouwkast 1 (bij slaapkamer 1)
+    furniture.add(box(0.68, 2.25, 2.5, M.wood, 5.29, 1.125, 9.45));
+    furniture.add(box(0.70, 0.02, 2.5, M.woodDark, 5.29, 2.24, 9.45, { noCast: true }));
+    // inbouwkast 2 (bij slaapkamer 2)
+    furniture.add(box(0.68, 2.25, 2.5, M.wood, 6.01, 1.125, 9.45));
+    furniture.add(box(0.70, 0.02, 2.5, M.woodDark, 6.01, 2.24, 9.45, { noCast: true }));
+  })();
 
   // -- Badkamer --
   (function () {
@@ -380,8 +389,9 @@
   label('Living / Salon', 3.0, 2.2, '39,74 m²');
   label('Eetkamer', 1.7, 5.9);
   label('Keuken', 1.0, 9.2);
-  label('Slaapkamer 1', 3.5, 9.2);
-  label('Slaapkamer 2', 7.5, 9.2);
+  label('Slaapkamer 1', 3.2, 9.2);
+  label('Slaapkamer 2', 7.6, 9.2);
+  label('Inbouwkasten', 5.65, 9.45);
   label('Badkamer', 4.45, 6.5);
   label('Hal', 4.9, 4.85);
   label('Nachthal', 5.85, 6.7);
