@@ -71,7 +71,10 @@
   const activeVar = () => store.variants.find(v => v.id === store.active) || store.variants[0];
   function saveStore() { try { localStorage.setItem(VKEY, JSON.stringify(store)); } catch (e) {} }
   let rooms = JSON.parse(JSON.stringify(activeVar().rooms));
-  let sel = -1;
+  let sel = -1;          // primaire selectie (voor handvatten / enkele bewerking)
+  let selSet = [];       // alle geselecteerde ruimtes (meervoud, voor verbinden)
+  function clearSel() { sel = -1; selSet = []; }
+  function selOne(i) { sel = i; selSet = i >= 0 ? [i] : []; }
   function save() { activeVar().rooms = JSON.parse(JSON.stringify(rooms)); saveStore(); flash('Variant "' + activeVar().name + '" opgeslagen ✓'); }
 
   // ===================== 2D EDITOR =====================
@@ -82,8 +85,9 @@
   const deep = a => JSON.parse(JSON.stringify(a));
   let history = [deep(rooms)], hi = 0;
   function commit() { history = history.slice(0, hi + 1); history.push(deep(rooms)); hi = history.length - 1; if (history.length > 120) { history.shift(); hi--; } activeVar().rooms = deep(rooms); saveStore(); }
-  function undo() { if (hi > 0) { hi--; rooms = deep(history[hi]); if (sel >= rooms.length) sel = -1; panel(); draw(); } }
-  function redo() { if (hi < history.length - 1) { hi++; rooms = deep(history[hi]); if (sel >= rooms.length) sel = -1; panel(); draw(); } }
+  function pruneSel() { selSet = selSet.filter(i => i < rooms.length); if (sel >= rooms.length) sel = selSet.length ? selSet[selSet.length - 1] : -1; }
+  function undo() { if (hi > 0) { hi--; rooms = deep(history[hi]); pruneSel(); panel(); draw(); } }
+  function redo() { if (hi < history.length - 1) { hi++; rooms = deep(history[hi]); pruneSel(); panel(); draw(); } }
   window.__verbouw = { commit, undo, redo };
 
   function sizeCanvas() { const r = wrap.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px'; }
@@ -104,6 +108,17 @@
   function inPoly(x, z) { let c = false; for (let i = 0, j = POLY.length - 1; i < POLY.length; j = i++) { const xi = POLY[i][0], zi = POLY[i][1], xj = POLY[j][0], zj = POLY[j][1]; if (((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi)) c = !c; } return c; }
   function overlapTrap(r) { const cs = corners(r); let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; cs.forEach(p => { x0 = Math.min(x0, p[0]); z0 = Math.min(z0, p[1]); x1 = Math.max(x1, p[0]); z1 = Math.max(z1, p[1]); }); return x0 < TRAPHAL.x + TRAPHAL.w - .05 && x1 > TRAPHAL.x + .05 && z0 < TRAPHAL.z + TRAPHAL.d - .05 && z1 > TRAPHAL.z + .05; }
   function bad(r) { return corners(r).some(p => !inPoly(p[0], p[1])) || overlapTrap(r); }
+  // gedeelde rand tussen twee (niet-gedraaide) aangrenzende ruimtes → [x1,z1,x2,z2] of null
+  function sharedEdge(r, s) {
+    if (r.rot || s.rot) return null; const eps = 0.12;
+    const ox = Math.min(r.x + r.w, s.x + s.w) - Math.max(r.x, s.x);
+    const oz = Math.min(r.z + r.d, s.z + s.d) - Math.max(r.z, s.z);
+    if (Math.abs(r.x - (s.x + s.w)) < eps && oz > 0.2) { const x = r.x, z0 = Math.max(r.z, s.z), z1 = Math.min(r.z + r.d, s.z + s.d); return [x, z0, x, z1]; }
+    if (Math.abs((r.x + r.w) - s.x) < eps && oz > 0.2) { const x = r.x + r.w, z0 = Math.max(r.z, s.z), z1 = Math.min(r.z + r.d, s.z + s.d); return [x, z0, x, z1]; }
+    if (Math.abs(r.z - (s.z + s.d)) < eps && ox > 0.2) { const z = r.z, x0 = Math.max(r.x, s.x), x1 = Math.min(r.x + r.w, s.x + s.w); return [x0, z, x1, z]; }
+    if (Math.abs((r.z + r.d) - s.z) < eps && ox > 0.2) { const z = r.z + r.d, x0 = Math.max(r.x, s.x), x1 = Math.min(r.x + r.w, s.x + s.w); return [x0, z, x1, z]; }
+    return null;
+  }
 
   let guides = [];
   function draw() {
@@ -120,22 +135,34 @@
     let nbad = 0;
     rooms.forEach((r, i) => {
       const t = TYPES[r.type] || TYPES.leeg, cs = corners(r).map(p => scr(p[0], p[1])), isBad = bad(r); if (isBad) nbad++;
+      const inSel = selSet.indexOf(i) >= 0;
       ctx.beginPath(); cs.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
       ctx.fillStyle = t.col; ctx.fill();
-      ctx.strokeStyle = isBad ? '#e8663a' : (i === sel ? '#c79a3f' : '#2a2f37'); ctx.lineWidth = ((i === sel || isBad) ? 3 : 1.2) * devicePixelRatio;
+      ctx.strokeStyle = isBad ? '#e8663a' : (inSel ? '#c79a3f' : '#2a2f37'); ctx.lineWidth = ((inSel || isBad) ? 3 : 1.2) * devicePixelRatio;
       if (isBad) ctx.setLineDash([7, 4]); ctx.stroke(); ctx.setLineDash([]);
       const c = cen(r), s = scr(c[0], c[1]);
+      if (r.grp) { ctx.fillStyle = 'rgba(70,163,224,.95)'; ctx.font = (12 * devicePixelRatio) + 'px Helvetica'; ctx.fillText('🔗', s[0], s[1] - 14 * devicePixelRatio); }
       ctx.fillStyle = '#2a2a2a'; ctx.font = 'bold ' + (12 * devicePixelRatio) + 'px Helvetica'; ctx.textAlign = 'center'; ctx.fillText(r.name, s[0], s[1] + 3);
       ctx.font = (10 * devicePixelRatio) + 'px Helvetica'; ctx.fillStyle = '#555';
       ctx.fillText(r.w.toFixed(2) + ' × ' + r.d.toFixed(2) + ' m' + (r.rot ? '  ⟳' + Math.round((r.rot * 180 / Math.PI) % 360) + '°' : ''), s[0], s[1] + 18 * devicePixelRatio);
     });
+    // verbonden ruimtes: teken de "opening" (weggevallen wand) tussen aangrenzende groep-genoten
+    ctx.strokeStyle = 'rgba(134,201,138,.95)'; ctx.lineWidth = 6 * devicePixelRatio; ctx.lineCap = 'round';
+    for (let i = 0; i < rooms.length; i++) for (let j = i + 1; j < rooms.length; j++) {
+      const a = rooms[i], b = rooms[j]; if (!a.grp || a.grp !== b.grp) continue;
+      const e = sharedEdge(a, b); if (!e) continue;
+      const dx = e[2] - e[0], dz = e[3] - e[1], L = Math.hypot(dx, dz); if (L < 0.3) continue;
+      const ins = Math.min(0.18, L * 0.3), ux = dx / L, uz = dz / L;
+      line(e[0] + ux * ins, e[1] + uz * ins, e[2] - ux * ins, e[3] - uz * ins);
+    }
+    ctx.lineCap = 'butt';
     hatch(TRAPHAL.x, TRAPHAL.z, TRAPHAL.w, TRAPHAL.d);
     ctx.fillStyle = '#9aa2ad'; ctx.font = (11 * devicePixelRatio) + 'px Helvetica'; ctx.textAlign = 'center'; ctx.fillText('🔒 traphal', PX(TRAPHAL.x + TRAPHAL.w / 2), PZ(TRAPHAL.z + TRAPHAL.d / 2));
     ctx.strokeStyle = '#e9e4da'; ctx.lineWidth = 5 * devicePixelRatio; ctx.lineCap = 'round';
     SHELL.forEach(s => { if (s.ax === 'x') line(s.a, s.f, s.b, s.f); else line(s.f, s.a, s.f, s.b); });
     SHELL.forEach(s => { (s.win || []).forEach(w => mark(s, w[0], w[1], '#7fd3e8', 6)); (s.door || []).forEach(dr => mark(s, dr[0], dr[1], '#86c98a', 6)); });
     ctx.strokeStyle = '#86c98a'; ctx.lineWidth = 6 * devicePixelRatio; line(FRONTDOOR.x, FRONTDOOR.z0, FRONTDOOR.x, FRONTDOOR.z1);
-    if (sel >= 0) {
+    if (selSet.length === 1 && sel >= 0) {
       const r = rooms[sel];
       handles(r).forEach(h => { ctx.fillStyle = '#c79a3f'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * devicePixelRatio; ctx.beginPath(); ctx.arc(h[0], h[1], 6 * devicePixelRatio, 0, 7); ctx.fill(); ctx.stroke(); });
       const rh = rotHandle(r), cc = scr(...wcorn(r, 0, r.d / 2));
@@ -159,8 +186,9 @@
   // ---- snapping ----
   const SNT = 0.14;
   function snapLines(skip) {
+    const skp = (typeof skip === 'number') ? new Set([skip]) : (skip || new Set());
     const xs = [0, W, 7.61, 8.46, 4.27, TRAPHAL.x, TRAPHAL.x + TRAPHAL.w], zs = [0, 0.69, D, 4.43, 8.05, TRAPHAL.z, TRAPHAL.z + TRAPHAL.d];
-    rooms.forEach((r, i) => { if (i === skip || r.rot) return; xs.push(r.x, r.x + r.w); zs.push(r.z, r.z + r.d); });
+    rooms.forEach((r, i) => { if (skp.has(i) || r.rot) return; xs.push(r.x, r.x + r.w); zs.push(r.z, r.z + r.d); });
     return { xs, zs };
   }
   function snapTo(val, arr) { let best = null, bd = SNT; for (const L of arr) { const d = Math.abs(val - L); if (d < bd) { bd = d; best = L; } } return best; }
@@ -171,10 +199,24 @@
   function down(e) {
     const { px, py } = pos(e);
     if (e.button === 1 || e.button === 2) { drag = { mode: 'pan', sx: px, sy: py, ox0: ox, oy0: oy }; if (e.cancelable) e.preventDefault(); return; }
-    if (sel >= 0) { const r = rooms[sel]; const rh = rotHandle(r);
+    if (selSet.length === 1 && sel >= 0) { const r = rooms[sel]; const rh = rotHandle(r);
       if (Math.hypot(rh[0] - px, rh[1] - py) < 14 * devicePixelRatio) { drag = { mode: 'rotate', r, ch: false }; return; }
       for (const h of handles(r)) if (Math.hypot(h[0] - px, h[1] - py) < 14 * devicePixelRatio) { drag = { mode: 'resize', k: h[2], r, ch: false }; return; } }
-    for (let i = rooms.length - 1; i >= 0; i--) { if (hit(rooms[i], px, py)) { sel = i; drag = { mode: 'move', i, r: rooms[i], ox0: IX(px) - rooms[i].x, oz0: IZ(py) - rooms[i].z, ch: false }; panel(); draw(); return; } }
+    for (let i = rooms.length - 1; i >= 0; i--) {
+      if (!hit(rooms[i], px, py)) continue;
+      if (e.shiftKey) { // meervoudige selectie aan/uit
+        const k = selSet.indexOf(i);
+        if (k >= 0) { selSet.splice(k, 1); sel = selSet.length ? selSet[selSet.length - 1] : -1; }
+        else { selSet.push(i); sel = i; }
+        drag = { mode: 'pan', sx: px, sy: py, ox0: ox, oy0: oy }; // geen verschuiving bij shift-klik
+        panel(); draw(); return;
+      }
+      if (selSet.length > 1 && selSet.indexOf(i) >= 0) { // sleep hele groep samen
+        sel = i; const base = selSet.map(j => ({ j, x: rooms[j].x, z: rooms[j].z }));
+        drag = { mode: 'move', i, r: rooms[i], ox0: IX(px) - rooms[i].x, oz0: IZ(py) - rooms[i].z, base, bx: rooms[i].x, bz: rooms[i].z, skip: new Set(selSet), ch: false };
+      } else { selOne(i); drag = { mode: 'move', i, r: rooms[i], ox0: IX(px) - rooms[i].x, oz0: IZ(py) - rooms[i].z, skip: i, ch: false }; }
+      panel(); draw(); return;
+    }
     drag = { mode: 'pan', sx: px, sy: py, ox0: ox, oy0: oy, deselect: true };
   }
   function hit(r, px, py) { const c = cen(r), l = ROT(IX(px) - c[0], IZ(py) - c[1], -(r.rot || 0)); return Math.abs(l[0]) <= r.w / 2 && Math.abs(l[1]) <= r.d / 2; }
@@ -184,7 +226,7 @@
     const r = drag.r; drag.ch = true; guides = [];
     if (drag.mode === 'move') {
       let rx = IX(px) - drag.ox0, rz = IZ(py) - drag.oz0;
-      if (!r.rot) { const L = snapLines(drag.i);
+      if (!r.rot) { const L = snapLines(drag.skip);
         const sl = snapTo(rx, L.xs), sr = snapTo(rx + r.w, L.xs);
         if (sl != null && (sr == null || Math.abs(sl - rx) <= Math.abs(sr - rx - r.w))) { rx = sl; guides.push({ ax: 'x', v: sl }); }
         else if (sr != null) { rx = sr - r.w; guides.push({ ax: 'x', v: sr }); } else rx = snap(rx);
@@ -192,7 +234,8 @@
         if (sb != null && (st == null || Math.abs(sb - rz) <= Math.abs(st - rz - r.d))) { rz = sb; guides.push({ ax: 'z', v: sb }); }
         else if (st != null) { rz = st - r.d; guides.push({ ax: 'z', v: st }); } else rz = snap(rz);
       } else { rx = snap(rx); rz = snap(rz); }
-      r.x = rx; r.z = rz;
+      if (drag.base) { const dx = rx - drag.bx, dz = rz - drag.bz; drag.base.forEach(o => { rooms[o.j].x = o.x + dx; rooms[o.j].z = o.z + dz; }); }
+      else { r.x = rx; r.z = rz; }
     } else if (drag.mode === 'rotate') {
       const c = cen(r); let a = Math.atan2(IZ(py) - c[1], IX(px) - c[0]) - Math.PI / 2;
       if (!e.shiftKey) a = Math.round(a / (Math.PI / 36)) * (Math.PI / 36);
@@ -209,7 +252,7 @@
     }
     panel(); draw(); if (e.cancelable) e.preventDefault();
   }
-  function up() { if (drag) { if (drag.mode === 'pan') { if (drag.deselect) { sel = -1; panel(); } } else if (drag.ch) commit(); } drag = null; guides = []; draw(); }
+  function up() { if (drag) { if (drag.mode === 'pan') { if (drag.deselect) { clearSel(); panel(); } } else if (drag.ch) commit(); } drag = null; guides = []; draw(); }
   cv.addEventListener('mousedown', down); addEventListener('mousemove', move); addEventListener('mouseup', up);
   cv.addEventListener('contextmenu', e => e.preventDefault());
   cv.addEventListener('wheel', e => { e.preventDefault(); const { px, py } = pos(e), wx = IX(px), wz = IZ(py), f = Math.exp(-e.deltaY * 0.0012); scale = Math.max(10 * devicePixelRatio, Math.min(520 * devicePixelRatio, scale * f)); ox = px - wx * scale; oy = py - (D - wz) * scale; draw(); }, { passive: false });
@@ -226,23 +269,50 @@
     if (mod && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (mod && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
     if (typing) return;
-    if ((e.key === 'r' || e.key === 'R') && sel >= 0) { e.preventDefault(); const r = rooms[sel]; r.rot = (((r.rot || 0) + (e.shiftKey ? -1 : 1) * Math.PI / 2) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI); commit(); panel(); draw(); }
-    else if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0) { e.preventDefault(); rooms.splice(sel, 1); sel = -1; commit(); panel(); draw(); }
+    if ((e.key === 'r' || e.key === 'R') && selSet.length === 1 && sel >= 0) { e.preventDefault(); const r = rooms[sel]; r.rot = (((r.rot || 0) + (e.shiftKey ? -1 : 1) * Math.PI / 2) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI); commit(); panel(); draw(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && selSet.length) { e.preventDefault(); const del = new Set(selSet); rooms = rooms.filter((_, i) => !del.has(i)); clearSel(); commit(); panel(); draw(); }
   });
 
   // ===================== SIDEBAR =====================
   const side = document.getElementById('side');
   const esc = s => (s + '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  function rebuild3D() { if (three) three.rebuild(rooms); }
+  function connectSel() {
+    const gids = new Set(); selSet.forEach(i => { if (rooms[i].grp) gids.add(rooms[i].grp); });
+    const g = gids.size ? [...gids][0] : ('g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
+    rooms.forEach(r => { if (r.grp && gids.has(r.grp)) r.grp = g; });
+    selSet.forEach(i => rooms[i].grp = g);
+    commit(); panel(); draw(); rebuild3D(); flash('Ruimtes verbonden — open ruimte ✓');
+  }
+  function disconnectSel(ids) { ids.forEach(i => { delete rooms[i].grp; }); commit(); panel(); draw(); rebuild3D(); flash('Verbinding verbroken'); }
   function panel() {
-    if (sel < 0) { side.innerHTML = '<div class="empty"><b>Vaste buitenschil</b> (buitenmuren, ramen, buitendeur) staat vast.<br><br>Ontwerp de binnenindeling: klik <b>+ Ruimte</b>, sleep blokken, trek de <b>hoekjes</b> om te vergroten/verkleinen, en kies per ruimte een <b>functie</b>.<br><br>Met <b>Lege schil</b> begin je blanco.</div>'; return; }
+    if (selSet.length > 1) {
+      let h = '<h2>' + selSet.length + ' ruimtes geselecteerd</h2>';
+      h += '<div class="empty">Shift+klik om ruimtes toe te voegen of weg te laten. Sleep een geselecteerde ruimte om de hele groep te verplaatsen.</div>';
+      const names = selSet.map(i => rooms[i].name).join(' · ');
+      h += '<div class="field" style="margin-top:12px"><label>Selectie</label><div style="font-size:13px;line-height:1.5">' + esc(names) + '</div></div>';
+      const anyGrp = selSet.some(i => rooms[i].grp);
+      h += '<button class="btn" id="connBtn" style="width:100%;background:#2b5b7a;border-color:#3a74a0;color:#eaf4fb;margin-bottom:8px">🔗 Verbind tot open ruimte</button>';
+      if (anyGrp) h += '<button class="btn" id="disBtn" style="width:100%;margin-bottom:8px">⛓ Verbinding verbreken</button>';
+      h += '<button class="btn warn" id="delMulti" style="width:100%">Geselecteerde ruimtes verwijderen</button>';
+      side.innerHTML = h;
+      document.getElementById('connBtn').onclick = connectSel;
+      const db = document.getElementById('disBtn'); if (db) db.onclick = () => disconnectSel(selSet.slice());
+      document.getElementById('delMulti').onclick = () => { const del = new Set(selSet); rooms = rooms.filter((_, i) => !del.has(i)); clearSel(); commit(); panel(); draw(); };
+      if (innerWidth <= 760) side.classList.add('show');
+      return;
+    }
+    if (sel < 0) { side.innerHTML = '<div class="empty"><b>Vaste buitenschil</b> (buitenmuren, ramen, buitendeur) staat vast.<br><br>Ontwerp de binnenindeling: klik <b>+ Ruimte</b>, sleep blokken, trek de <b>hoekjes</b> om te vergroten/verkleinen, en kies per ruimte een <b>functie</b>.<br><br><b>Shift+klik</b> meerdere ruimtes om ze te <b>verbinden</b> tot één open ruimte (bv. open keuken + living).<br><br>Met <b>Lege schil</b> begin je blanco.</div>'; return; }
     const r = rooms[sel]; let h = '<h2>Ruimte bewerken</h2>';
     h += '<div class="field"><label>Naam</label><input id="fName" value="' + esc(r.name) + '"></div>';
     h += '<div class="field"><label>Functie</label><div class="types">';
     for (const k in TYPES) h += '<button data-t="' + k + '" class="' + (r.type === k ? 'on' : '') + '"><span class="sw" style="background:' + TYPES[k].col + '"></span>' + TYPES[k].label + '</button>';
     h += '</div></div><div class="field"><label>Afmetingen (m)</label><div class="dims"><input id="fW" value="' + r.w.toFixed(2) + '"><input id="fD" value="' + r.d.toFixed(2) + '"></div></div>';
     h += '<div class="field"><label>Draaien</label><div class="dims"><button class="btn" id="rotBtn" style="flex:1">⟳ 90°</button><button class="btn" id="rot0Btn" style="flex:1">↺ recht</button></div></div>';
+    if (r.grp) h += '<div class="field"><label>Open ruimte</label><div style="font-size:12px;color:#9db0c0;margin-bottom:6px">🔗 Verbonden met aangrenzende ruimte(s).</div><button class="btn" id="disOne" style="width:100%">⛓ Verbinding verbreken</button></div>';
     h += '<button class="btn warn" id="delBtn" style="width:100%">Ruimte verwijderen</button>';
     side.innerHTML = h;
+    if (r.grp) document.getElementById('disOne').onclick = () => disconnectSel([sel]);
     document.getElementById('fName').oninput = e => { r.name = e.target.value; draw(); };
     document.getElementById('fName').onchange = () => commit();
     side.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { r.type = b.getAttribute('data-t'); commit(); panel(); draw(); });
@@ -250,21 +320,21 @@
     document.getElementById('fD').onchange = e => { r.d = Math.max(0.4, parseFloat(e.target.value) || r.d); commit(); draw(); };
     document.getElementById('rotBtn').onclick = () => { r.rot = (((r.rot || 0) + Math.PI / 2) % (2 * Math.PI)); commit(); panel(); draw(); };
     document.getElementById('rot0Btn').onclick = () => { r.rot = 0; commit(); panel(); draw(); };
-    document.getElementById('delBtn').onclick = () => { rooms.splice(sel, 1); sel = -1; commit(); panel(); draw(); };
+    document.getElementById('delBtn').onclick = () => { rooms.splice(sel, 1); clearSel(); commit(); panel(); draw(); };
     if (innerWidth <= 760) side.classList.add('show');
   }
-  const addRoom = (o) => { rooms.push(Object.assign({ name: 'Nieuwe ruimte', type: 'leeg', x: 2.5, z: 2.5, w: 2.5, d: 2.5 }, o)); sel = rooms.length - 1; commit(); panel(); draw(); };
+  const addRoom = (o) => { rooms.push(Object.assign({ name: 'Nieuwe ruimte', type: 'leeg', x: 2.5, z: 2.5, w: 2.5, d: 2.5 }, o)); selOne(rooms.length - 1); commit(); panel(); draw(); };
   document.getElementById('addBtn').onclick = () => addRoom();
   document.getElementById('wcBtn').onclick = () => addRoom({ name: 'WC', type: 'wc', w: 0.90, d: 1.40 });
   document.getElementById('saveBtn').onclick = save;
-  document.getElementById('resetBtn').onclick = () => { if (confirm('Terug naar de originele indeling?')) { rooms = DEFAULT.map(r => Object.assign({}, r)); sel = -1; commit(); panel(); draw(); } };
-  document.getElementById('clearBtn').onclick = () => { if (confirm('Alle ruimtes wissen en met een lege schil beginnen?')) { rooms = []; sel = -1; commit(); panel(); draw(); } };
+  document.getElementById('resetBtn').onclick = () => { if (confirm('Terug naar de originele indeling?')) { rooms = DEFAULT.map(r => Object.assign({}, r)); clearSel(); commit(); panel(); draw(); } };
+  document.getElementById('clearBtn').onclick = () => { if (confirm('Alle ruimtes wissen en met een lege schil beginnen?')) { rooms = []; clearSel(); commit(); panel(); draw(); } };
 
   // ---- varianten-besturing ----
   const varSel = document.getElementById('varSel');
   function syncVars() { varSel.innerHTML = store.variants.map(v => '<option value="' + v.id + '"' + (v.id === store.active ? ' selected' : '') + '>' + esc(v.name) + '</option>').join(''); }
   function refresh() { panel(); if (!document.getElementById('stage2d').classList.contains('off')) { fit(); } else if (three) { three.rebuild(rooms); } }
-  function loadActive() { rooms = deep(activeVar().rooms); sel = -1; history = [deep(rooms)]; hi = 0; syncVars(); refresh(); }
+  function loadActive() { rooms = deep(activeVar().rooms); clearSel(); history = [deep(rooms)]; hi = 0; syncVars(); refresh(); }
   varSel.onchange = () => { activeVar().rooms = deep(rooms); store.active = varSel.value; saveStore(); loadActive(); };
   document.getElementById('varNew').onclick = () => {
     activeVar().rooms = deep(rooms);
@@ -315,7 +385,7 @@
     const floorMats = {}; for (const k in TYPES) floorMats[k] = new THREE.MeshStandardMaterial({ color: TYPES[k].floor, roughness: 0.9, side: THREE.DoubleSide });
     const box = (w, h, d, m, x, y, z, nc) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.castShadow = !nc; b.receiveShadow = true; return b; };
     const mx = x => W - x; // spiegel → juiste oriëntatie
-    let ceilings = [];
+    let ceilings = [], roomWalls = 0;
 
     function seg(ax, fixed, a, b, y0, y1, th, m) { const len = Math.abs(b - a), h = y1 - y0; if (len <= .01 || h <= .01) return;
       a = Math.min(a, b); b = a + len; model.add(ax === 'x' ? box(len, h, th, m, (a + b) / 2, y0 + h / 2, fixed, true) : box(th, h, len, m, fixed, y0 + h / 2, (a + b) / 2, true)); }
@@ -338,7 +408,7 @@
         model.add(box(r, r, z2 - z1, MAT.frame, x1, rh, (z1 + z2) / 2, true)); model.add(box(r, r, z2 - z1, MAT.frame, x2, rh, (z1 + z2) / 2, true)); } }
 
     function rebuild(rms) {
-      while (model.children.length) model.remove(model.children[0]); ceilings = [];
+      while (model.children.length) model.remove(model.children[0]); ceilings = []; roomWalls = 0;
       // vloerplaat (envelope-vorm, gespiegeld)
       const shp = new THREE.Shape(); POLY.forEach((p, i) => { const X = mx(p[0]), Z = p[1]; i ? shp.lineTo(X, Z) : shp.moveTo(X, Z); }); shp.closePath();
       const fg = new THREE.Mesh(new THREE.ShapeGeometry(shp), MAT.base); fg.rotation.x = Math.PI / 2; fg.position.y = 0; fg.receiveShadow = true; model.add(fg);
@@ -355,16 +425,28 @@
       for (let i = 0; i < 10; i++) model.add(box(1.5, .05 + i * .03, .32, MAT.traphal, (tx1 + tx2) / 2, i * .13 + .06, tz1 + .4 + i * .3, true));
       // deurpaneel (buitendeur) half open
       model.add(box(.04, 2.0, FRONTDOOR.z1 - FRONTDOOR.z0, MAT.door, mx(TRAPHAL.x) + .02, 1.0, (FRONTDOOR.z0 + FRONTDOOR.z1) / 2, true));
-      // BEWERKBARE RUIMTES: vloer + plafond + binnenwanden (schil-randen overslaan; met rotatie)
+      // verbonden ruimtes: binnenwand verdwijnt waar twee groep-genoten tegen elkaar liggen
+      const openEdge = (r, side) => {
+        if (!r.grp || r.rot) return false; const eps = 0.12, ov = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0) > 0.2;
+        return rms.some(s => {
+          if (s === r || s.grp !== r.grp || s.rot) return false;
+          if (side === 'S') return Math.abs((s.z + s.d) - r.z) < eps && ov(r.x, r.x + r.w, s.x, s.x + s.w);
+          if (side === 'N') return Math.abs(s.z - (r.z + r.d)) < eps && ov(r.x, r.x + r.w, s.x, s.x + s.w);
+          if (side === 'E') return Math.abs(s.x - (r.x + r.w)) < eps && ov(r.z, r.z + r.d, s.z, s.z + s.d);
+          if (side === 'W') return Math.abs((s.x + s.w) - r.x) < eps && ov(r.z, r.z + r.d, s.z, s.z + s.d);
+          return false;
+        });
+      };
+      // BEWERKBARE RUIMTES: vloer + plafond + binnenwanden (schil-randen + verbonden randen overslaan; met rotatie)
       rms.forEach(r => {
         const rot = r.rot || 0, w = r.w, d = r.d, th = .09;
         const g = new THREE.Group(); g.position.set(mx(r.x + r.w / 2), 0, r.z + r.d / 2); g.scale.x = -1; g.rotation.y = -rot;
         g.add(box(w, .05, d, floorMats[r.type] || floorMats.leeg, 0, .04, 0, true));
         const c = new THREE.Mesh(new THREE.PlaneGeometry(w, d), MAT.ceil); c.rotation.x = Math.PI / 2; c.position.set(0, H, 0); c.visible = roofOn; g.add(c); ceilings.push(c);
-        if (rot || !nearShellZ(r.z)) g.add(box(w, H, th, MAT.wall, 0, H / 2, -d / 2, true));            // zuid
-        if (rot || !nearShellZ(r.z + r.d)) g.add(box(w, H, th, MAT.wall, 0, H / 2, d / 2, true));        // noord
-        if (rot || !nearShellX(r.x + r.w)) g.add(box(th, H, d, MAT.wall, w / 2, H / 2, 0, true));        // oost (editor) = local +x
-        if (rot || !nearShellX(r.x)) g.add(box(th, H, d, MAT.wall, -w / 2, H / 2, 0, true));             // west (editor) = local -x
+        if ((rot || !nearShellZ(r.z)) && !openEdge(r, 'S')) { g.add(box(w, H, th, MAT.wall, 0, H / 2, -d / 2, true)); roomWalls++; }            // zuid
+        if ((rot || !nearShellZ(r.z + r.d)) && !openEdge(r, 'N')) { g.add(box(w, H, th, MAT.wall, 0, H / 2, d / 2, true)); roomWalls++; }        // noord
+        if ((rot || !nearShellX(r.x + r.w)) && !openEdge(r, 'E')) { g.add(box(th, H, d, MAT.wall, w / 2, H / 2, 0, true)); roomWalls++; }        // oost (editor) = local +x
+        if ((rot || !nearShellX(r.x)) && !openEdge(r, 'W')) { g.add(box(th, H, d, MAT.wall, -w / 2, H / 2, 0, true)); roomWalls++; }             // west (editor) = local -x
         model.add(g);
       });
     }
@@ -414,7 +496,7 @@
         renderer.render(scene, fp); } })();
     addEventListener('resize', resize); setTimeout(resize, 30);
     window.__ED3D = { topdown() { cam.position.set(W / 2, 24, D / 2 + 0.01); orbit.target.set(W / 2, 0, D / 2); orbit.update(); renderer.render(scene, cam); } };
-    return { rebuild, resize };
+    return { rebuild, resize, wallsBuilt: () => roomWalls };
   }
 
   // ===================== TABS =====================
@@ -422,5 +504,12 @@
   tab2d.onclick = () => { tab2d.classList.add('on'); tab3d.classList.remove('on'); stage2d.classList.remove('off'); app3d.classList.remove('on'); fit(); };
   tab3d.onclick = () => { tab3d.classList.add('on'); tab2d.classList.remove('on'); stage2d.classList.add('off'); app3d.classList.add('on'); build3D(); three.resize(); };
   addEventListener('resize', () => { if (!stage2d.classList.contains('off')) fit(); });
+  // debug/test-hook (zoals window.__ED3D)
+  window.__ED = {
+    get rooms() { return rooms; },
+    select(arr) { selSet = arr.slice(); sel = arr.length ? arr[arr.length - 1] : -1; panel(); draw(); },
+    connect() { connectSel(); },
+    build3D, get three() { return three; },
+  };
   fit(); panel();
 })();
