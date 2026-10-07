@@ -49,13 +49,14 @@
     <h1>🏗️ Verbouw-editor <span>· Maastrichtersteenweg</span></h1>
     <div class="seg"><button id="tab2d" class="on">2D bewerken</button><button id="tab3d">3D bekijken</button></div>
     <button class="btn" id="addBtn">+ Ruimte</button>
+    <button class="btn" id="clearBtn">Lege schil</button>
     <button class="btn" id="saveBtn">Opslaan</button>
     <button class="btn warn" id="resetBtn">Reset</button>
   </header>
   <main>
     <div id="stage2d">
       <div id="canvasWrap">
-        <div class="tip">Sleep een ruimte om te verplaatsen · sleep de <b>hoekjes</b> om te vergroten/verkleinen · klik om te selecteren</div>
+        <div class="tip">De <b>buitenschil</b> (buitenmuren · ramen · buitendeur) staat vast. Ontwerp de binnenindeling: sleep blokken, trek de <b>hoekjes</b>, kies een functie. "<b>Lege schil</b>" = blanco beginnen.</div>
         <canvas id="cv"></canvas>
       </div>
       <div id="side"><div class="empty">Selecteer een ruimte (klik erop) om de <b>naam</b>, <b>functie</b> en <b>afmetingen</b> aan te passen.<br><br>Of voeg een nieuwe ruimte toe met <b>+ Ruimte</b>.</div></div>
