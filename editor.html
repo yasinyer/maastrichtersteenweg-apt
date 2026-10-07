@@ -18,6 +18,10 @@
   .btn { background:var(--panel); color:var(--txt); border:1px solid var(--line); padding:8px 12px; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer; }
   .btn:hover { border-color:rgba(255,255,255,.3); }
   .btn.warn { color:#e88; }
+  .btn.mini { padding:7px 9px; }
+  .vargrp { display:flex; align-items:center; gap:5px; padding:3px 7px; background:#0c0f14; border:1px solid var(--line); border-radius:10px; }
+  .vlab { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .vsel { background:#171b23; color:var(--txt); border:1px solid var(--line); border-radius:7px; padding:6px 8px; font-size:13px; font-weight:600; max-width:150px; }
   main { flex:1; position:relative; overflow:hidden; }
   #stage2d { position:absolute; inset:0; display:flex; }
   #canvasWrap { flex:1; position:relative; overflow:hidden; background:#0b0e12; }
@@ -48,6 +52,13 @@
   <header>
     <h1>🏗️ Verbouw-editor <span>· Maastrichtersteenweg</span></h1>
     <div class="seg"><button id="tab2d" class="on">2D bewerken</button><button id="tab3d">3D bekijken</button></div>
+    <div class="vargrp">
+      <span class="vlab">Variant</span>
+      <select id="varSel" class="vsel"></select>
+      <button class="btn mini" id="varNew" title="Nieuwe variant (kopie van huidige)">➕</button>
+      <button class="btn mini" id="varRen" title="Variant hernoemen">✎</button>
+      <button class="btn mini warn" id="varDel" title="Variant verwijderen">🗑</button>
+    </div>
     <button class="btn" id="addBtn">+ Ruimte</button>
     <button class="btn" id="wcBtn">+ WC</button>
     <button class="btn" id="clearBtn">Lege schil</button>

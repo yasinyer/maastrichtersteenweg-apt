@@ -58,11 +58,21 @@
     { name: 'Living (west)', type: 'living', x: 0.00, z: 4.43, w: 3.82, d: 3.62 },
   ];
 
-  const KEY = 'mstw_verbouw_v2';
-  let rooms = load() || DEFAULT.map(r => Object.assign({}, r));
+  // ---- varianten (opslag) ----
+  const VKEY = 'mstw_verbouw_variants';
+  const uid = () => 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  function loadStore() {
+    try { const s = JSON.parse(localStorage.getItem(VKEY)); if (s && s.variants && s.variants.length) return s; } catch (e) {}
+    let old = null; try { old = JSON.parse(localStorage.getItem('mstw_verbouw_v2')); } catch (e) {}
+    const f = { id: uid(), name: 'Variant 1', rooms: (old && old.length !== undefined) ? old : DEFAULT.map(r => Object.assign({}, r)) };
+    return { variants: [f], active: f.id };
+  }
+  let store = loadStore();
+  const activeVar = () => store.variants.find(v => v.id === store.active) || store.variants[0];
+  function saveStore() { try { localStorage.setItem(VKEY, JSON.stringify(store)); } catch (e) {} }
+  let rooms = JSON.parse(JSON.stringify(activeVar().rooms));
   let sel = -1;
-  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); return (s && s.length !== undefined) ? s : null; } catch (e) { return null; } }
-  function save() { localStorage.setItem(KEY, JSON.stringify(rooms)); flash('Opgeslagen ✓'); }
+  function save() { activeVar().rooms = JSON.parse(JSON.stringify(rooms)); saveStore(); flash('Variant "' + activeVar().name + '" opgeslagen ✓'); }
 
   // ===================== 2D EDITOR =====================
   const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
@@ -71,7 +81,7 @@
   // ---- undo/redo ----
   const deep = a => JSON.parse(JSON.stringify(a));
   let history = [deep(rooms)], hi = 0;
-  function commit() { history = history.slice(0, hi + 1); history.push(deep(rooms)); hi = history.length - 1; if (history.length > 120) { history.shift(); hi--; } }
+  function commit() { history = history.slice(0, hi + 1); history.push(deep(rooms)); hi = history.length - 1; if (history.length > 120) { history.shift(); hi--; } activeVar().rooms = deep(rooms); saveStore(); }
   function undo() { if (hi > 0) { hi--; rooms = deep(history[hi]); if (sel >= rooms.length) sel = -1; panel(); draw(); } }
   function redo() { if (hi < history.length - 1) { hi++; rooms = deep(history[hi]); if (sel >= rooms.length) sel = -1; panel(); draw(); } }
   window.__verbouw = { commit, undo, redo };
@@ -249,6 +259,24 @@
   document.getElementById('saveBtn').onclick = save;
   document.getElementById('resetBtn').onclick = () => { if (confirm('Terug naar de originele indeling?')) { rooms = DEFAULT.map(r => Object.assign({}, r)); sel = -1; commit(); panel(); draw(); } };
   document.getElementById('clearBtn').onclick = () => { if (confirm('Alle ruimtes wissen en met een lege schil beginnen?')) { rooms = []; sel = -1; commit(); panel(); draw(); } };
+
+  // ---- varianten-besturing ----
+  const varSel = document.getElementById('varSel');
+  function syncVars() { varSel.innerHTML = store.variants.map(v => '<option value="' + v.id + '"' + (v.id === store.active ? ' selected' : '') + '>' + esc(v.name) + '</option>').join(''); }
+  function refresh() { panel(); if (!document.getElementById('stage2d').classList.contains('off')) { fit(); } else if (three) { three.rebuild(rooms); } }
+  function loadActive() { rooms = deep(activeVar().rooms); sel = -1; history = [deep(rooms)]; hi = 0; syncVars(); refresh(); }
+  varSel.onchange = () => { activeVar().rooms = deep(rooms); store.active = varSel.value; saveStore(); loadActive(); };
+  document.getElementById('varNew').onclick = () => {
+    activeVar().rooms = deep(rooms);
+    const n = { id: uid(), name: 'Variant ' + (store.variants.length + 1), rooms: deep(rooms) };
+    store.variants.push(n); store.active = n.id; saveStore(); loadActive(); flash('Nieuwe variant (kopie van huidige)');
+  };
+  document.getElementById('varRen').onclick = () => { const nm = prompt('Naam van deze variant:', activeVar().name); if (nm && nm.trim()) { activeVar().name = nm.trim(); saveStore(); syncVars(); } };
+  document.getElementById('varDel').onclick = () => {
+    if (store.variants.length <= 1) { alert('Je hebt minstens één variant nodig.'); return; }
+    if (confirm('Variant "' + activeVar().name + '" verwijderen?')) { store.variants = store.variants.filter(v => v.id !== store.active); store.active = store.variants[0].id; saveStore(); loadActive(); }
+  };
+  syncVars();
   function flash(t) { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#c79a3f;color:#171307;padding:9px 16px;border-radius:10px;font-weight:700;z-index:99'; document.body.appendChild(d); setTimeout(() => d.remove(), 1400); }
 
   // ===================== 3D =====================
