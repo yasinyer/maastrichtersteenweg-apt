@@ -39,6 +39,7 @@
     slaapkamer: { label: 'Slaapkamer',          col: '#d8c3ac', floor: 0xb99e86 },
     keuken:     { label: 'Keuken',              col: '#bcd3d8', floor: 0xdfe4e8 },
     badkamer:   { label: 'Badkamer',            col: '#cfe2ec', floor: 0xd6e6ee },
+    wc:         { label: 'WC / toilet',         col: '#b9d6de', floor: 0xcfe0e6 },
     eetkamer:   { label: 'Eetkamer',            col: '#c9d6c0', floor: 0xb9c7b0 },
     bureau:     { label: 'Bureau / kantoor',    col: '#cdc3d6', floor: 0xb9a9c0 },
     hal:        { label: 'Hal / gang',          col: '#d3c6b4', floor: 0xc9b79c },
@@ -67,83 +68,157 @@
   const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
   const wrap = document.getElementById('canvasWrap');
   let scale = 40, ox = 40, oy = 40;
-  function fit() {
-    const r = wrap.getBoundingClientRect();
-    cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio;
-    cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px';
-    const m = 46;
-    scale = Math.min((r.width - 2 * m) / W, (r.height - 2 * m) / (D + 1)) * devicePixelRatio;
-    ox = (cv.width - W * scale) / 2; oy = (cv.height - D * scale) / 2; draw();
-  }
+  // ---- undo/redo ----
+  const deep = a => JSON.parse(JSON.stringify(a));
+  let history = [deep(rooms)], hi = 0;
+  function commit() { history = history.slice(0, hi + 1); history.push(deep(rooms)); hi = history.length - 1; if (history.length > 120) { history.shift(); hi--; } }
+  function undo() { if (hi > 0) { hi--; rooms = deep(history[hi]); if (sel >= rooms.length) sel = -1; panel(); draw(); } }
+  function redo() { if (hi < history.length - 1) { hi++; rooms = deep(history[hi]); if (sel >= rooms.length) sel = -1; panel(); draw(); } }
+  window.__verbouw = { commit, undo, redo };
+
+  function sizeCanvas() { const r = wrap.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px'; }
+  function fitView() { const m = 46 * devicePixelRatio; scale = Math.min((cv.width - 2 * m) / W, (cv.height - 2 * m) / (D + 1)); ox = (cv.width - W * scale) / 2; oy = (cv.height - D * scale) / 2; }
+  function fit() { sizeCanvas(); fitView(); draw(); }
   const PX = x => ox + x * scale, PZ = z => oy + (D - z) * scale;
   const IX = px => (px - ox) / scale, IZ = py => D - (py - oy) / scale;
 
+  // ---- rotatie-helpers ----
+  const ROT = (x, z, a) => { const c = Math.cos(a), s = Math.sin(a); return [x * c - z * s, x * s + z * c]; };
+  const cen = r => [r.x + r.w / 2, r.z + r.d / 2];
+  function wcorn(r, lx, lz) { const c = cen(r), d = ROT(lx, lz, r.rot || 0); return [c[0] + d[0], c[1] + d[1]]; }
+  const scr = (x, z) => [PX(x), PZ(z)];
+  const CORN = { nw: [-1, 1], ne: [1, 1], sw: [-1, -1], se: [1, -1] };
+  const corners = r => [wcorn(r, -r.w / 2, -r.d / 2), wcorn(r, r.w / 2, -r.d / 2), wcorn(r, r.w / 2, r.d / 2), wcorn(r, -r.w / 2, r.d / 2)];
+
+  // ---- binnen de schil? ----
+  function inPoly(x, z) { let c = false; for (let i = 0, j = POLY.length - 1; i < POLY.length; j = i++) { const xi = POLY[i][0], zi = POLY[i][1], xj = POLY[j][0], zj = POLY[j][1]; if (((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi)) c = !c; } return c; }
+  function overlapTrap(r) { const cs = corners(r); let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; cs.forEach(p => { x0 = Math.min(x0, p[0]); z0 = Math.min(z0, p[1]); x1 = Math.max(x1, p[0]); z1 = Math.max(z1, p[1]); }); return x0 < TRAPHAL.x + TRAPHAL.w - .05 && x1 > TRAPHAL.x + .05 && z0 < TRAPHAL.z + TRAPHAL.d - .05 && z1 > TRAPHAL.z + .05; }
+  function bad(r) { return corners(r).some(p => !inPoly(p[0], p[1])) || overlapTrap(r); }
+
+  let guides = [];
   function draw() {
     ctx.clearRect(0, 0, cv.width, cv.height);
-    // envelope-vlak (lichte binnenkant)
-    ctx.beginPath(); POLY.forEach((p, i) => { const X = PX(p[0]), Y = PZ(p[1]); i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }); ctx.closePath();
-    ctx.fillStyle = '#1b2029'; ctx.fill();
-    // terrassen
+    ctx.beginPath(); POLY.forEach((p, i) => { const q = scr(p[0], p[1]); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.closePath(); ctx.fillStyle = '#1b2029'; ctx.fill();
     ctx.fillStyle = '#343841'; TERRAS.forEach(t => ctx.fillRect(PX(t.x), PZ(t.z + t.d), t.w * scale, t.d * scale));
     ctx.font = (11 * devicePixelRatio) + 'px Helvetica'; ctx.fillStyle = '#8b93a0'; ctx.textAlign = 'center';
     TERRAS.forEach(t => ctx.fillText('terras', PX(t.x + t.w / 2), PZ(t.z + t.d / 2) + 4));
-    // ruimtes (bewerkbaar)
+    // snap-hulplijnen
+    ctx.strokeStyle = 'rgba(199,154,63,.7)'; ctx.lineWidth = 1 * devicePixelRatio; ctx.setLineDash([5, 5]);
+    guides.forEach(g => { ctx.beginPath(); if (g.ax === 'x') { ctx.moveTo(PX(g.v), 0); ctx.lineTo(PX(g.v), cv.height); } else { ctx.moveTo(0, PZ(g.v)); ctx.lineTo(cv.width, PZ(g.v)); } ctx.stroke(); });
+    ctx.setLineDash([]);
+    // ruimtes
+    let nbad = 0;
     rooms.forEach((r, i) => {
-      const t = TYPES[r.type] || TYPES.leeg;
-      ctx.fillStyle = t.col; ctx.strokeStyle = (i === sel) ? '#c79a3f' : '#2a2f37'; ctx.lineWidth = (i === sel ? 3 : 1.2) * devicePixelRatio;
-      ctx.fillRect(PX(r.x), PZ(r.z + r.d), r.w * scale, r.d * scale); ctx.strokeRect(PX(r.x), PZ(r.z + r.d), r.w * scale, r.d * scale);
-      ctx.fillStyle = '#2a2a2a'; ctx.font = 'bold ' + (12 * devicePixelRatio) + 'px Helvetica'; ctx.fillText(r.name, PX(r.x + r.w / 2), PZ(r.z + r.d / 2) + 3);
-      ctx.font = (10 * devicePixelRatio) + 'px Helvetica'; ctx.fillStyle = '#555'; ctx.fillText(r.w.toFixed(2) + ' × ' + r.d.toFixed(2) + ' m', PX(r.x + r.w / 2), PZ(r.z + r.d / 2) + 18 * devicePixelRatio);
+      const t = TYPES[r.type] || TYPES.leeg, cs = corners(r).map(p => scr(p[0], p[1])), isBad = bad(r); if (isBad) nbad++;
+      ctx.beginPath(); cs.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+      ctx.fillStyle = t.col; ctx.fill();
+      ctx.strokeStyle = isBad ? '#e8663a' : (i === sel ? '#c79a3f' : '#2a2f37'); ctx.lineWidth = ((i === sel || isBad) ? 3 : 1.2) * devicePixelRatio;
+      if (isBad) ctx.setLineDash([7, 4]); ctx.stroke(); ctx.setLineDash([]);
+      const c = cen(r), s = scr(c[0], c[1]);
+      ctx.fillStyle = '#2a2a2a'; ctx.font = 'bold ' + (12 * devicePixelRatio) + 'px Helvetica'; ctx.textAlign = 'center'; ctx.fillText(r.name, s[0], s[1] + 3);
+      ctx.font = (10 * devicePixelRatio) + 'px Helvetica'; ctx.fillStyle = '#555';
+      ctx.fillText(r.w.toFixed(2) + ' × ' + r.d.toFixed(2) + ' m' + (r.rot ? '  ⟳' + Math.round((r.rot * 180 / Math.PI) % 360) + '°' : ''), s[0], s[1] + 18 * devicePixelRatio);
     });
-    // vaste traphal (gemeenschappelijk, niet bewerkbaar)
     hatch(TRAPHAL.x, TRAPHAL.z, TRAPHAL.w, TRAPHAL.d);
-    ctx.fillStyle = '#9aa2ad'; ctx.font = (11 * devicePixelRatio) + 'px Helvetica'; ctx.textAlign = 'center';
-    ctx.fillText('🔒 traphal', PX(TRAPHAL.x + TRAPHAL.w / 2), PZ(TRAPHAL.z + TRAPHAL.d / 2));
-    // VASTE SCHIL: dikke buitenmuren
+    ctx.fillStyle = '#9aa2ad'; ctx.font = (11 * devicePixelRatio) + 'px Helvetica'; ctx.textAlign = 'center'; ctx.fillText('🔒 traphal', PX(TRAPHAL.x + TRAPHAL.w / 2), PZ(TRAPHAL.z + TRAPHAL.d / 2));
     ctx.strokeStyle = '#e9e4da'; ctx.lineWidth = 5 * devicePixelRatio; ctx.lineCap = 'round';
     SHELL.forEach(s => { if (s.ax === 'x') line(s.a, s.f, s.b, s.f); else line(s.f, s.a, s.f, s.b); });
-    // ramen (cyaan) + deuren (groen)
-    SHELL.forEach(s => {
-      (s.win || []).forEach(w => mark(s, w[0], w[1], '#7fd3e8', 6));
-      (s.door || []).forEach(dr => mark(s, dr[0], dr[1], '#86c98a', 6));
-    });
-    // buitendeur (hoofddeur)
+    SHELL.forEach(s => { (s.win || []).forEach(w => mark(s, w[0], w[1], '#7fd3e8', 6)); (s.door || []).forEach(dr => mark(s, dr[0], dr[1], '#86c98a', 6)); });
     ctx.strokeStyle = '#86c98a'; ctx.lineWidth = 6 * devicePixelRatio; line(FRONTDOOR.x, FRONTDOOR.z0, FRONTDOOR.x, FRONTDOOR.z1);
-    ctx.fillStyle = '#86c98a'; ctx.font = 'bold ' + (9 * devicePixelRatio) + 'px Helvetica'; ctx.save();
-    ctx.translate(PX(FRONTDOOR.x) + 8 * devicePixelRatio, PZ((FRONTDOOR.z0 + FRONTDOOR.z1) / 2)); ctx.fillText('buitendeur', 28 * devicePixelRatio, 3); ctx.restore();
-    // handvatten
-    if (sel >= 0) handles(rooms[sel]).forEach(h => { ctx.fillStyle = '#c79a3f'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * devicePixelRatio; ctx.beginPath(); ctx.arc(PX(h.x), PZ(h.z), 6 * devicePixelRatio, 0, 7); ctx.fill(); ctx.stroke(); });
+    if (sel >= 0) {
+      const r = rooms[sel];
+      handles(r).forEach(h => { ctx.fillStyle = '#c79a3f'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * devicePixelRatio; ctx.beginPath(); ctx.arc(h[0], h[1], 6 * devicePixelRatio, 0, 7); ctx.fill(); ctx.stroke(); });
+      const rh = rotHandle(r), cc = scr(...wcorn(r, 0, r.d / 2));
+      ctx.strokeStyle = '#4aa3e0'; ctx.lineWidth = 1.5 * devicePixelRatio; ctx.beginPath(); ctx.moveTo(cc[0], cc[1]); ctx.lineTo(rh[0], rh[1]); ctx.stroke();
+      ctx.fillStyle = '#4aa3e0'; ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.arc(rh[0], rh[1], 7 * devicePixelRatio, 0, 7); ctx.fill(); ctx.stroke();
+    }
+    if (nbad) { ctx.fillStyle = 'rgba(232,102,58,.92)'; const bw = 300 * devicePixelRatio, bh = 30 * devicePixelRatio; ctx.fillRect((cv.width - bw) / 2, 8 * devicePixelRatio, bw, bh);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + (12 * devicePixelRatio) + 'px Helvetica'; ctx.textAlign = 'center'; ctx.fillText('⚠ ' + nbad + ' ruimte' + (nbad > 1 ? 's vallen' : ' valt') + ' buiten de schil / in de traphal', cv.width / 2, 28 * devicePixelRatio); }
   }
   function line(x1, z1, x2, z2) { ctx.beginPath(); ctx.moveTo(PX(x1), PZ(z1)); ctx.lineTo(PX(x2), PZ(z2)); ctx.stroke(); }
   function mark(s, a, b, col, wdt) { ctx.strokeStyle = col; ctx.lineWidth = wdt * devicePixelRatio; if (s.ax === 'x') line(a, s.f, b, s.f); else line(s.f, a, s.f, b); }
   function hatch(x, z, w, d) {
     ctx.save(); ctx.beginPath(); ctx.rect(PX(x), PZ(z + d), w * scale, d * scale); ctx.clip();
-    ctx.fillStyle = '#20252e'; ctx.fillRect(PX(x), PZ(z + d), w * scale, d * scale);
-    ctx.strokeStyle = '#333a44'; ctx.lineWidth = 1.5 * devicePixelRatio;
+    ctx.fillStyle = '#20252e'; ctx.fillRect(PX(x), PZ(z + d), w * scale, d * scale); ctx.strokeStyle = '#333a44'; ctx.lineWidth = 1.5 * devicePixelRatio;
     for (let i = -d; i < w + d; i += 0.35) line(x + i, z, x + i + d, z + d);
     ctx.restore(); ctx.strokeStyle = '#3a414c'; ctx.lineWidth = 1.5 * devicePixelRatio; ctx.strokeRect(PX(x), PZ(z + d), w * scale, d * scale);
   }
-  function handles(r) { return [{ k: 'nw', x: r.x, z: r.z + r.d }, { k: 'ne', x: r.x + r.w, z: r.z + r.d }, { k: 'sw', x: r.x, z: r.z }, { k: 'se', x: r.x + r.w, z: r.z }]; }
+  function handles(r) { return [['nw', -r.w / 2, r.d / 2], ['ne', r.w / 2, r.d / 2], ['sw', -r.w / 2, -r.d / 2], ['se', r.w / 2, -r.d / 2]].map(h => { const w = wcorn(r, h[1], h[2]), s = scr(w[0], w[1]); return [s[0], s[1], h[0]]; }); }
+  function rotHandle(r) { const w = wcorn(r, 0, r.d / 2 + 24 * devicePixelRatio / scale); return scr(w[0], w[1]); }
 
-  let drag = null;
+  // ---- snapping ----
+  const SNT = 0.14;
+  function snapLines(skip) {
+    const xs = [0, W, 7.61, 8.46, 4.27, TRAPHAL.x, TRAPHAL.x + TRAPHAL.w], zs = [0, 0.69, D, 4.43, 8.05, TRAPHAL.z, TRAPHAL.z + TRAPHAL.d];
+    rooms.forEach((r, i) => { if (i === skip || r.rot) return; xs.push(r.x, r.x + r.w); zs.push(r.z, r.z + r.d); });
+    return { xs, zs };
+  }
+  function snapTo(val, arr) { let best = null, bd = SNT; for (const L of arr) { const d = Math.abs(val - L); if (d < bd) { bd = d; best = L; } } return best; }
+
+  let drag = null, pinch = null;
   function pos(e) { const p = e.touches ? e.touches[0] : e, b = cv.getBoundingClientRect(); return { px: (p.clientX - b.left) * devicePixelRatio, py: (p.clientY - b.top) * devicePixelRatio }; }
+  const snap = v => Math.round(v * 20) / 20;
   function down(e) {
     const { px, py } = pos(e);
-    if (sel >= 0) for (const h of handles(rooms[sel])) if (Math.hypot(PX(h.x) - px, PZ(h.z) - py) < 13 * devicePixelRatio) { drag = { mode: 'resize', k: h.k, r: rooms[sel] }; return; }
-    for (let i = rooms.length - 1; i >= 0; i--) { const r = rooms[i]; if (px >= PX(r.x) && px <= PX(r.x + r.w) && py <= PZ(r.z) && py >= PZ(r.z + r.d)) { sel = i; drag = { mode: 'move', r, dx: IX(px) - r.x, dz: IZ(py) - r.z }; panel(); draw(); return; } }
-    sel = -1; drag = null; panel(); draw();
+    if (e.button === 1 || e.button === 2) { drag = { mode: 'pan', sx: px, sy: py, ox0: ox, oy0: oy }; if (e.cancelable) e.preventDefault(); return; }
+    if (sel >= 0) { const r = rooms[sel]; const rh = rotHandle(r);
+      if (Math.hypot(rh[0] - px, rh[1] - py) < 14 * devicePixelRatio) { drag = { mode: 'rotate', r, ch: false }; return; }
+      for (const h of handles(r)) if (Math.hypot(h[0] - px, h[1] - py) < 14 * devicePixelRatio) { drag = { mode: 'resize', k: h[2], r, ch: false }; return; } }
+    for (let i = rooms.length - 1; i >= 0; i--) { if (hit(rooms[i], px, py)) { sel = i; drag = { mode: 'move', i, r: rooms[i], ox0: IX(px) - rooms[i].x, oz0: IZ(py) - rooms[i].z, ch: false }; panel(); draw(); return; } }
+    drag = { mode: 'pan', sx: px, sy: py, ox0: ox, oy0: oy, deselect: true };
   }
-  const snap = v => Math.round(v * 20) / 20;
+  function hit(r, px, py) { const c = cen(r), l = ROT(IX(px) - c[0], IZ(py) - c[1], -(r.rot || 0)); return Math.abs(l[0]) <= r.w / 2 && Math.abs(l[1]) <= r.d / 2; }
   function move(e) {
-    if (!drag) return; const { px, py } = pos(e), r = drag.r;
-    if (drag.mode === 'move') { r.x = snap(IX(px) - drag.dx); r.z = snap(IZ(py) - drag.dz); }
-    else { let x1 = r.x, z1 = r.z, x2 = r.x + r.w, z2 = r.z + r.d; const mX = snap(IX(px)), mZ = snap(IZ(py));
-      if (drag.k.includes('w')) x1 = mX; if (drag.k.includes('e')) x2 = mX; if (drag.k.includes('s')) z1 = mZ; if (drag.k.includes('n')) z2 = mZ;
-      r.x = Math.min(x1, x2); r.z = Math.min(z1, z2); r.w = Math.max(0.4, Math.abs(x2 - x1)); r.d = Math.max(0.4, Math.abs(z2 - z1)); }
+    if (!drag) return; const { px, py } = pos(e);
+    if (drag.mode === 'pan') { ox = drag.ox0 + (px - drag.sx); oy = drag.oy0 + (py - drag.sy); if (Math.abs(px - drag.sx) + Math.abs(py - drag.sy) > 3) drag.deselect = false; draw(); if (e.cancelable) e.preventDefault(); return; }
+    const r = drag.r; drag.ch = true; guides = [];
+    if (drag.mode === 'move') {
+      let rx = IX(px) - drag.ox0, rz = IZ(py) - drag.oz0;
+      if (!r.rot) { const L = snapLines(drag.i);
+        const sl = snapTo(rx, L.xs), sr = snapTo(rx + r.w, L.xs);
+        if (sl != null && (sr == null || Math.abs(sl - rx) <= Math.abs(sr - rx - r.w))) { rx = sl; guides.push({ ax: 'x', v: sl }); }
+        else if (sr != null) { rx = sr - r.w; guides.push({ ax: 'x', v: sr }); } else rx = snap(rx);
+        const sb = snapTo(rz, L.zs), st = snapTo(rz + r.d, L.zs);
+        if (sb != null && (st == null || Math.abs(sb - rz) <= Math.abs(st - rz - r.d))) { rz = sb; guides.push({ ax: 'z', v: sb }); }
+        else if (st != null) { rz = st - r.d; guides.push({ ax: 'z', v: st }); } else rz = snap(rz);
+      } else { rx = snap(rx); rz = snap(rz); }
+      r.x = rx; r.z = rz;
+    } else if (drag.mode === 'rotate') {
+      const c = cen(r); let a = Math.atan2(IZ(py) - c[1], IX(px) - c[0]) - Math.PI / 2;
+      if (!e.shiftKey) a = Math.round(a / (Math.PI / 36)) * (Math.PI / 36);
+      a = ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); r.rot = a;
+    } else { // resize
+      const sg = CORN[drag.k], F = wcorn(r, -sg[0] * r.w / 2, -sg[1] * r.d / 2), a = r.rot || 0;
+      let P = [IX(px), IZ(py)];
+      if (!a) { const L = snapLines(drag.i); const sx = snapTo(P[0], L.xs), sz = snapTo(P[1], L.zs); if (sx != null) { P[0] = sx; guides.push({ ax: 'x', v: sx }); } if (sz != null) { P[1] = sz; guides.push({ ax: 'z', v: sz }); } }
+      const Lf = ROT(F[0], F[1], -a), Lp = ROT(P[0], P[1], -a);
+      let w = Math.max(0.4, Math.abs(Lp[0] - Lf[0])), d = Math.max(0.4, Math.abs(Lp[1] - Lf[1]));
+      if (a) { w = snap(w); d = snap(d); }
+      const oN = [-sg[0] * w / 2, -sg[1] * d / 2], ob = ROT(oN[0], oN[1], a);
+      r.w = w; r.d = d; r.x = F[0] - ob[0] - w / 2; r.z = F[1] - ob[1] - d / 2;
+    }
     panel(); draw(); if (e.cancelable) e.preventDefault();
   }
-  cv.addEventListener('mousedown', down); addEventListener('mousemove', move); addEventListener('mouseup', () => drag = null);
-  cv.addEventListener('touchstart', down, { passive: false }); cv.addEventListener('touchmove', move, { passive: false }); addEventListener('touchend', () => drag = null);
+  function up() { if (drag) { if (drag.mode === 'pan') { if (drag.deselect) { sel = -1; panel(); } } else if (drag.ch) commit(); } drag = null; guides = []; draw(); }
+  cv.addEventListener('mousedown', down); addEventListener('mousemove', move); addEventListener('mouseup', up);
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  cv.addEventListener('wheel', e => { e.preventDefault(); const { px, py } = pos(e), wx = IX(px), wz = IZ(py), f = Math.exp(-e.deltaY * 0.0012); scale = Math.max(10 * devicePixelRatio, Math.min(520 * devicePixelRatio, scale * f)); ox = px - wx * scale; oy = py - (D - wz) * scale; draw(); }, { passive: false });
+  // touch
+  function tdist(e) { const a = e.touches[0], b = e.touches[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+  function tmid(e) { const a = e.touches[0], b = e.touches[1], bb = cv.getBoundingClientRect(); return [((a.clientX + b.clientX) / 2 - bb.left) * devicePixelRatio, ((a.clientY + b.clientY) / 2 - bb.top) * devicePixelRatio]; }
+  cv.addEventListener('touchstart', e => { if (e.touches.length === 2) { const m = tmid(e); pinch = { d: tdist(e), sc: scale, wx: IX(m[0]), wz: IZ(m[1]) }; drag = null; } else { down(e); } if (e.cancelable) e.preventDefault(); }, { passive: false });
+  cv.addEventListener('touchmove', e => { if (pinch && e.touches.length === 2) { const m = tmid(e), f = tdist(e) / pinch.d; scale = Math.max(10 * devicePixelRatio, Math.min(520 * devicePixelRatio, pinch.sc * f)); ox = m[0] - pinch.wx * scale; oy = m[1] - (D - pinch.wz) * scale; draw(); } else if (!pinch) move(e); if (e.cancelable) e.preventDefault(); }, { passive: false });
+  addEventListener('touchend', e => { if (!e.touches || e.touches.length < 2) pinch = null; up(); });
+  // toetsen
+  addEventListener('keydown', e => {
+    if (document.getElementById('stage2d').classList.contains('off')) return;
+    const tag = (document.activeElement || {}).tagName, typing = tag === 'INPUT' || tag === 'TEXTAREA', mod = e.ctrlKey || e.metaKey;
+    if (mod && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if (mod && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
+    if (typing) return;
+    if ((e.key === 'r' || e.key === 'R') && sel >= 0) { e.preventDefault(); const r = rooms[sel]; r.rot = (((r.rot || 0) + (e.shiftKey ? -1 : 1) * Math.PI / 2) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI); commit(); panel(); draw(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0) { e.preventDefault(); rooms.splice(sel, 1); sel = -1; commit(); panel(); draw(); }
+  });
 
   // ===================== SIDEBAR =====================
   const side = document.getElementById('side');
@@ -155,19 +230,25 @@
     h += '<div class="field"><label>Functie</label><div class="types">';
     for (const k in TYPES) h += '<button data-t="' + k + '" class="' + (r.type === k ? 'on' : '') + '"><span class="sw" style="background:' + TYPES[k].col + '"></span>' + TYPES[k].label + '</button>';
     h += '</div></div><div class="field"><label>Afmetingen (m)</label><div class="dims"><input id="fW" value="' + r.w.toFixed(2) + '"><input id="fD" value="' + r.d.toFixed(2) + '"></div></div>';
+    h += '<div class="field"><label>Draaien</label><div class="dims"><button class="btn" id="rotBtn" style="flex:1">⟳ 90°</button><button class="btn" id="rot0Btn" style="flex:1">↺ recht</button></div></div>';
     h += '<button class="btn warn" id="delBtn" style="width:100%">Ruimte verwijderen</button>';
     side.innerHTML = h;
     document.getElementById('fName').oninput = e => { r.name = e.target.value; draw(); };
-    side.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { r.type = b.getAttribute('data-t'); panel(); draw(); });
-    document.getElementById('fW').onchange = e => { r.w = Math.max(0.4, parseFloat(e.target.value) || r.w); draw(); };
-    document.getElementById('fD').onchange = e => { r.d = Math.max(0.4, parseFloat(e.target.value) || r.d); draw(); };
-    document.getElementById('delBtn').onclick = () => { rooms.splice(sel, 1); sel = -1; panel(); draw(); };
+    document.getElementById('fName').onchange = () => commit();
+    side.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { r.type = b.getAttribute('data-t'); commit(); panel(); draw(); });
+    document.getElementById('fW').onchange = e => { r.w = Math.max(0.4, parseFloat(e.target.value) || r.w); commit(); draw(); };
+    document.getElementById('fD').onchange = e => { r.d = Math.max(0.4, parseFloat(e.target.value) || r.d); commit(); draw(); };
+    document.getElementById('rotBtn').onclick = () => { r.rot = (((r.rot || 0) + Math.PI / 2) % (2 * Math.PI)); commit(); panel(); draw(); };
+    document.getElementById('rot0Btn').onclick = () => { r.rot = 0; commit(); panel(); draw(); };
+    document.getElementById('delBtn').onclick = () => { rooms.splice(sel, 1); sel = -1; commit(); panel(); draw(); };
     if (innerWidth <= 760) side.classList.add('show');
   }
-  document.getElementById('addBtn').onclick = () => { rooms.push({ name: 'Nieuwe ruimte', type: 'leeg', x: 2.5, z: 2.5, w: 2.5, d: 2.5 }); sel = rooms.length - 1; panel(); draw(); };
+  const addRoom = (o) => { rooms.push(Object.assign({ name: 'Nieuwe ruimte', type: 'leeg', x: 2.5, z: 2.5, w: 2.5, d: 2.5 }, o)); sel = rooms.length - 1; commit(); panel(); draw(); };
+  document.getElementById('addBtn').onclick = () => addRoom();
+  document.getElementById('wcBtn').onclick = () => addRoom({ name: 'WC', type: 'wc', w: 0.90, d: 1.40 });
   document.getElementById('saveBtn').onclick = save;
-  document.getElementById('resetBtn').onclick = () => { if (confirm('Terug naar de originele indeling?')) { rooms = DEFAULT.map(r => Object.assign({}, r)); sel = -1; panel(); draw(); } };
-  document.getElementById('clearBtn').onclick = () => { if (confirm('Alle ruimtes wissen en met een lege schil beginnen?')) { rooms = []; sel = -1; panel(); draw(); } };
+  document.getElementById('resetBtn').onclick = () => { if (confirm('Terug naar de originele indeling?')) { rooms = DEFAULT.map(r => Object.assign({}, r)); sel = -1; commit(); panel(); draw(); } };
+  document.getElementById('clearBtn').onclick = () => { if (confirm('Alle ruimtes wissen en met een lege schil beginnen?')) { rooms = []; sel = -1; commit(); panel(); draw(); } };
   function flash(t) { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#c79a3f;color:#171307;padding:9px 16px;border-radius:10px;font-weight:700;z-index:99'; document.body.appendChild(d); setTimeout(() => d.remove(), 1400); }
 
   // ===================== 3D =====================
@@ -194,7 +275,7 @@
     const model = new THREE.Group(); scene.add(model);
     const MAT = {
       shell: new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.95 }),
-      wall: new THREE.MeshStandardMaterial({ color: 0xefeae1, roughness: 0.95 }),
+      wall: new THREE.MeshStandardMaterial({ color: 0xefeae1, roughness: 0.95, side: THREE.DoubleSide }),
       glass: new THREE.MeshStandardMaterial({ color: 0xaad4e5, roughness: 0.05, transparent: true, opacity: 0.26 }),
       frame: new THREE.MeshStandardMaterial({ color: 0x8a8f94, roughness: 0.6, metalness: 0.3 }),
       door: new THREE.MeshStandardMaterial({ color: 0x6f4a2b, roughness: 0.7 }),
@@ -203,7 +284,7 @@
       traphal: new THREE.MeshStandardMaterial({ color: 0xcfd2d6, roughness: 0.6 }),
       ceil: new THREE.MeshStandardMaterial({ color: 0xfbfaf7, roughness: 1, side: THREE.DoubleSide }),
     };
-    const floorMats = {}; for (const k in TYPES) floorMats[k] = new THREE.MeshStandardMaterial({ color: TYPES[k].floor, roughness: 0.9 });
+    const floorMats = {}; for (const k in TYPES) floorMats[k] = new THREE.MeshStandardMaterial({ color: TYPES[k].floor, roughness: 0.9, side: THREE.DoubleSide });
     const box = (w, h, d, m, x, y, z, nc) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.castShadow = !nc; b.receiveShadow = true; return b; };
     const mx = x => W - x; // spiegel → juiste oriëntatie
     let ceilings = [];
@@ -246,15 +327,17 @@
       for (let i = 0; i < 10; i++) model.add(box(1.5, .05 + i * .03, .32, MAT.traphal, (tx1 + tx2) / 2, i * .13 + .06, tz1 + .4 + i * .3, true));
       // deurpaneel (buitendeur) half open
       model.add(box(.04, 2.0, FRONTDOOR.z1 - FRONTDOOR.z0, MAT.door, mx(TRAPHAL.x) + .02, 1.0, (FRONTDOOR.z0 + FRONTDOOR.z1) / 2, true));
-      // BEWERKBARE RUIMTES: vloer + plafond + binnenwanden (schil-randen overslaan)
+      // BEWERKBARE RUIMTES: vloer + plafond + binnenwanden (schil-randen overslaan; met rotatie)
       rms.forEach(r => {
-        const x1 = mx(r.x + r.w), x2 = mx(r.x), z1 = r.z, z2 = r.z + r.d;
-        model.add(box(x2 - x1, .05, z2 - z1, floorMats[r.type] || floorMats.leeg, (x1 + x2) / 2, .04, (z1 + z2) / 2, true));
-        const c = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, z2 - z1), MAT.ceil); c.rotation.x = Math.PI / 2; c.position.set((x1 + x2) / 2, H, (z1 + z2) / 2); c.userData.c = 1; c.visible = roofOn; model.add(c); ceilings.push(c);
-        if (!nearShellZ(r.z)) seg('x', z1, x1, x2, 0, H, .09, MAT.wall);
-        if (!nearShellZ(r.z + r.d)) seg('x', z2, x1, x2, 0, H, .09, MAT.wall);
-        if (!nearShellX(r.x)) seg('z', x2, z1, z2, 0, H, .09, MAT.wall);
-        if (!nearShellX(r.x + r.w)) seg('z', x1, z1, z2, 0, H, .09, MAT.wall);
+        const rot = r.rot || 0, w = r.w, d = r.d, th = .09;
+        const g = new THREE.Group(); g.position.set(mx(r.x + r.w / 2), 0, r.z + r.d / 2); g.scale.x = -1; g.rotation.y = -rot;
+        g.add(box(w, .05, d, floorMats[r.type] || floorMats.leeg, 0, .04, 0, true));
+        const c = new THREE.Mesh(new THREE.PlaneGeometry(w, d), MAT.ceil); c.rotation.x = Math.PI / 2; c.position.set(0, H, 0); c.visible = roofOn; g.add(c); ceilings.push(c);
+        if (rot || !nearShellZ(r.z)) g.add(box(w, H, th, MAT.wall, 0, H / 2, -d / 2, true));            // zuid
+        if (rot || !nearShellZ(r.z + r.d)) g.add(box(w, H, th, MAT.wall, 0, H / 2, d / 2, true));        // noord
+        if (rot || !nearShellX(r.x + r.w)) g.add(box(th, H, d, MAT.wall, w / 2, H / 2, 0, true));        // oost (editor) = local +x
+        if (rot || !nearShellX(r.x)) g.add(box(th, H, d, MAT.wall, -w / 2, H / 2, 0, true));             // west (editor) = local -x
+        model.add(g);
       });
     }
     const nearShellX = x => Math.abs(x) < .3 || Math.abs(x - W) < .3 || Math.abs(x - 7.61) < .3 || Math.abs(x - 8.46) < .3;
@@ -302,6 +385,7 @@
         if (f || sx) { const l = Math.hypot(f, sx); f /= l; sx /= l; fpPos.x += (Math.sin(yaw) * f + Math.cos(yaw) * sx) * sp; fpPos.z += (Math.cos(yaw) * f - Math.sin(yaw) * sx) * sp; fpPos.x = Math.max(-1.5, Math.min(W + 1.5, fpPos.x)); fpPos.z = Math.max(-1.5, Math.min(D + 1.5, fpPos.z)); fpPos.y = 1.65; applyFP(); }
         renderer.render(scene, fp); } })();
     addEventListener('resize', resize); setTimeout(resize, 30);
+    window.__ED3D = { topdown() { cam.position.set(W / 2, 24, D / 2 + 0.01); orbit.target.set(W / 2, 0, D / 2); orbit.update(); renderer.render(scene, cam); } };
     return { rebuild, resize };
   }
 
